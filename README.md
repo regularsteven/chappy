@@ -22,6 +22,7 @@ npm run dev
 ## Testing
 
 - `npm test` verifies the default chat tabs (WhatsApp, Messenger, Discord) and accent palette remain intact so the renderer can load without crashing.
+- `npm run build` compiles the renderer bundle via Vite and confirms Tailwind/PostCSS can process the styles without runtime errors.
 
 ## Next steps
 
