@@ -15,7 +15,22 @@
           @click="selectTab(tab.id)"
         >
           <span class="sr-only">{{ tab.title }}</span>
-          <span class="text-lg font-semibold">{{ tab.title.slice(0, 1) }}</span>
+          <span class="flex h-full w-full items-center justify-center">
+            <img
+              v-if="tab.icon"
+              :src="tab.icon"
+              alt=""
+              aria-hidden="true"
+              class="h-10 w-10"
+              loading="lazy"
+            />
+            <span
+              v-else
+              class="text-lg font-semibold text-slate-200"
+            >
+              {{ tab.title.slice(0, 1) }}
+            </span>
+          </span>
           <span class="absolute -right-1 -top-1 h-3 w-3 rounded-full" :style="{ background: tab.color }"></span>
         </button>
       </div>
@@ -189,8 +204,10 @@
 <script setup>
 import { computed, reactive, ref } from 'vue';
 import { accentColors, defaultTabs } from './data/defaultTabs.mjs';
+import defaultIconUrl from './assets/icons/custom.svg?url';
 
-const tabs = ref([...defaultTabs]);
+const defaultIcon = defaultIconUrl;
+const tabs = ref(defaultTabs.map((tab) => ({ ...tab })));
 const activeTabId = ref('chappy');
 
 const activeTab = computed(() => {
@@ -261,7 +278,8 @@ const addTab = () => {
       id: candidateId,
       title: trimmedTitle,
       url: newTab.url.trim(),
-      color
+      color,
+      icon: defaultIcon
     }
   ];
 

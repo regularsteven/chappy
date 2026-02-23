@@ -10,8 +10,9 @@ npm install
 npm run dev
 ```
 
-- `npm run dev` spins up Vite and Electron together. The Chappy tab is the default landing screen. Because there are no preconfigured chats, add your first service (WhatsApp, Messenger, Discord, etc.) to populate the rail.
+- `npm run dev` spins up Vite and Electron together. The Chappy tab is the default landing screen. We include starter services (WhatsApp, Messenger, Discord, Telegram, Signal, Gmail, Trello, Google Calendar) so you can click once to open a client and then tweak the list to your liking.
 - `npm run build` produces a static renderer bundle in `dist/` and can be wired into any packaging process later.
+- `npm install` runs a lightweight postinstall script that patches Electron’s Info.plist so the running binary shows “Chappy” in the macOS menu bar / Command-Tab switcher during development.
 
 ## UX notes
 
