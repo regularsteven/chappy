@@ -1,6 +1,14 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 
+if (app.setName) {
+  app.setName('Chappy');
+}
+
+if (app.setAppUserModelId) {
+  app.setAppUserModelId('com.regularsteven.chappy');
+}
+
 const createMainWindow = () => {
   const browserWindow = new BrowserWindow({
     width: 1400,
