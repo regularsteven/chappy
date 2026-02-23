@@ -84,7 +84,99 @@
 
       <section id="workspace-content" class="workspace-content relative flex flex-1 flex-col overflow-hidden">
         <div v-if="activeTab.isChappy" id="chappy-tab-view" class="chappy-tab-view flex-1 overflow-y-auto p-6">
-          <div class="space-y-6">
+          <div id="chappy-subtab-menu" class="mb-6 inline-flex rounded-2xl border border-slate-800 bg-slate-900/70 p-1">
+            <button
+              id="chappy-subtab-your-chappy"
+              type="button"
+              class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+              :class="
+                chappyWorkspaceTab === 'your-chappy'
+                  ? 'bg-slate-700 text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              "
+              @click="setChappyWorkspaceTab('your-chappy')"
+            >
+              Your Chappy
+            </button>
+            <button
+              id="chappy-subtab-configure"
+              type="button"
+              class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+              :class="
+                chappyWorkspaceTab === 'configure'
+                  ? 'bg-slate-700 text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              "
+              @click="setChappyWorkspaceTab('configure')"
+            >
+              Configure
+            </button>
+          </div>
+
+          <div v-if="chappyWorkspaceTab === 'your-chappy'" id="your-chappy-view" class="space-y-6">
+            <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <p class="text-xs uppercase tracking-widest text-slate-500">Your Chappy</p>
+                  <h2 class="text-lg font-semibold text-white">Manage your workspace tabs</h2>
+                </div>
+                <button
+                  id="go-to-configure-link"
+                  type="button"
+                  class="rounded-full border border-sky-500/50 bg-sky-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-sky-200 transition hover:bg-sky-500/20"
+                  @click="setChappyWorkspaceTab('configure')"
+                >
+                  Configure
+                </button>
+              </div>
+            </div>
+
+            <div id="tab-library-panel" class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-[0_20px_40px_rgba(15,23,42,0.65)]">
+              <div class="flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-white">Tab library</h2>
+                <span class="text-xs uppercase tracking-widest text-slate-500">Drag later</span>
+              </div>
+              <ul v-if="tabs.length" class="mt-4 space-y-3">
+                <li
+                  v-for="(tab, index) in tabs"
+                  :key="tab.id"
+                  class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 p-3"
+                >
+                  <div class="space-y-0.5">
+                    <p class="text-sm font-semibold text-white">{{ tab.title }}</p>
+                    <p class="text-xs text-slate-500">{{ tab.url }}</p>
+                  </div>
+                  <div class="flex gap-2">
+                    <button
+                      class="rounded-full border border-slate-700 px-2 text-emerald-300 hover:bg-emerald-400/10"
+                      :disabled="index === 0"
+                      @click="moveTab(index, -1)"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      class="rounded-full border border-slate-700 px-2 text-sky-300 hover:bg-sky-400/10"
+                      :disabled="index === tabs.length - 1"
+                      @click="moveTab(index, 1)"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      class="rounded-full border border-slate-700 px-2 text-rose-300 hover:bg-rose-400/10"
+                      @click="removeTab(tab.id)"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </li>
+              </ul>
+              <div v-else class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-sm text-slate-400">
+                No chat services are configured yet. Use Configure to add your first client.
+              </div>
+            </div>
+          </div>
+
+          <div v-else id="configure-view" class="space-y-6">
             <div id="service-catalog-panel" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
               <div class="flex items-start justify-between gap-4">
                 <div>
@@ -133,70 +225,6 @@
                     </button>
                   </div>
                 </article>
-              </div>
-            </div>
-
-            <div id="chappy-info-panels" class="grid gap-5 lg:grid-cols-2">
-              <div class="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/70 to-slate-900/30 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
-                <p class="text-xs uppercase tracking-widest text-slate-500">Tab order</p>
-                <h2 class="text-lg font-semibold text-white">Arrange by importance</h2>
-                <p class="text-sm text-slate-400">
-                  The left rail is intentionally narrow. Use the reorder arrows below to keep your most-used chats
-                  within thumb reach.
-                </p>
-              </div>
-
-              <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
-                <p class="text-xs uppercase tracking-widest text-slate-500">Add a new client</p>
-                <h2 class="text-lg font-semibold text-white">Bring your own client</h2>
-                <p class="text-sm text-slate-400">
-                  Provide a name and the https:// URL for your web chat client. Chappy keeps a live list so you can
-                  re-order it immediately.
-                </p>
-              </div>
-            </div>
-
-            <div id="tab-library-panel" class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-[0_20px_40px_rgba(15,23,42,0.65)]">
-              <div class="flex items-center justify-between">
-                <h2 class="text-lg font-semibold text-white">Tab library</h2>
-                <span class="text-xs uppercase tracking-widest text-slate-500">Drag later</span>
-              </div>
-              <ul v-if="tabs.length" class="mt-4 space-y-3">
-                <li
-                  v-for="(tab, index) in tabs"
-                  :key="tab.id"
-                  class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 p-3"
-                >
-                  <div class="space-y-0.5">
-                    <p class="text-sm font-semibold text-white">{{ tab.title }}</p>
-                    <p class="text-xs text-slate-500">{{ tab.url }}</p>
-                  </div>
-                  <div class="flex gap-2">
-                    <button
-                      class="rounded-full border border-slate-700 px-2 text-emerald-300 hover:bg-emerald-400/10"
-                      :disabled="index === 0"
-                      @click="moveTab(index, -1)"
-                    >
-                      ↑
-                    </button>
-                    <button
-                      class="rounded-full border border-slate-700 px-2 text-sky-300 hover:bg-sky-400/10"
-                      :disabled="index === tabs.length - 1"
-                      @click="moveTab(index, 1)"
-                    >
-                      ↓
-                    </button>
-                    <button
-                      class="rounded-full border border-slate-700 px-2 text-rose-300 hover:bg-rose-400/10"
-                      @click="removeTab(tab.id)"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </li>
-              </ul>
-              <div v-else class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-sm text-slate-400">
-                No chat services are configured yet. Use the quick-add panel above or the form below to install a client.
               </div>
             </div>
 
@@ -277,6 +305,7 @@ const defaultIcon = defaultIconUrl;
 const availableServices = serviceCatalog;
 const tabs = ref([]);
 const activeTabId = ref('chappy');
+const chappyWorkspaceTab = ref('your-chappy');
 const hasLoadedConfig = ref(false);
 const chappyApi = typeof window !== 'undefined' ? window.chappy : null;
 
@@ -476,6 +505,10 @@ const handleIconError = (event) => {
 
 const selectTab = (id) => {
   activeTabId.value = id;
+};
+
+const setChappyWorkspaceTab = (value) => {
+  chappyWorkspaceTab.value = value === 'configure' ? 'configure' : 'your-chappy';
 };
 
 const addService = (service) => {
