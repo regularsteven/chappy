@@ -10,7 +10,7 @@ npm install
 npm run dev
 ```
 
-- `npm run dev` spins up Vite and Electron together. The Chappy tab is the default landing screen. We include starter services (WhatsApp, Messenger, Discord, Telegram, Signal, Gmail, Trello, Google Calendar) so you can click once to open a client and then tweak the list to your liking.
+- `npm run dev` spins up Vite and Electron together. The Chappy tab is the default landing screen and the rail starts empty. Use the quick-add grid to install WhatsApp, Messenger, Discord, Telegram, Signal, Gmail, Trello, or Google Calendar; each addition keeps its own session, and duplicates are supported.
 - `npm run build` produces a static renderer bundle in `dist/` and can be wired into any packaging process later.
 - `npm install` runs a lightweight postinstall script that patches Electron’s Info.plist so the running binary shows “Chappy” in the macOS menu bar / Command-Tab switcher during development.
 
@@ -22,7 +22,7 @@ npm run dev
 
 ## Testing
 
-- `npm test` verifies the accent palette exists and every configured tab points to a proper HTTPS URL so the renderer can load without crashing.
+- `npm test` verifies the accent palette exists and every curated service entry (WhatsApp, Messenger, Discord, etc.) ships with a valid HTTPS URL before the renderer runs.
 - `npm run build` compiles the renderer bundle via Vite and confirms Tailwind/PostCSS can process the styles without runtime errors.
 
 ## Next steps

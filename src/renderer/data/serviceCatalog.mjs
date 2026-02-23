@@ -1,4 +1,4 @@
-import { accentColors, baseTabs } from './defaultTabs.core.mjs';
+import { accentColors, serviceCatalogBase } from './serviceCatalog.core.mjs';
 import whatsappIcon from '../assets/icons/whatsapp.svg?url';
 import messengerIcon from '../assets/icons/messenger.svg?url';
 import discordIcon from '../assets/icons/discord.svg?url';
@@ -21,7 +21,7 @@ const iconMap = {
 
 export { accentColors };
 
-export const defaultTabs = baseTabs.map((tab) => ({
+export const serviceCatalog = serviceCatalogBase.map((tab) => ({
   ...tab,
   icon: iconMap[tab.id]
 }));

@@ -64,13 +64,57 @@
             <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-[0_0_20px_rgba(15,23,42,0.65)]">
               <p class="text-sm text-slate-400">
                 Chappy keeps the workspace organized: tabs stay on the left rail, stacked vertically so the main
-                area stays clutter-free. Every chat clients runs inside its own <span class="font-semibold text-white">webview</span>, letting you switch
+                area stays clutter-free. Every chat client runs inside its own <span class="font-semibold text-white">webview</span>, letting you switch
                 contexts without leaving the app.
               </p>
               <p class="text-sm text-slate-400">
-                Use the controls below to add new platforms, re-order the rail, or pin a client as your next
-                workspace.
+                Your rail starts empty. Use the quick-add grid below to push a service into the rail, then reorder or
+                duplicate it as needed for multiple accounts.
               </p>
+            </div>
+
+            <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="text-xs uppercase tracking-widest text-slate-500">Available services</p>
+                  <h2 class="text-lg font-semibold text-white">Tap to add</h2>
+                  <p class="text-sm text-slate-400">
+                    The grid below shows curated chat and productivity services — add as many variations as you
+                    need. Each addition keeps its own session partition.
+                  </p>
+                </div>
+                <span class="text-xs font-semibold text-slate-400">Duplicates welcome</span>
+              </div>
+              <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <article
+                  v-for="service in availableServices"
+                  :key="service.id"
+                  class="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-950/50 p-4 shadow-[0_10px_25px_rgba(2,6,23,0.7)] transition hover:border-sky-500/60"
+                >
+                  <div class="flex items-center gap-3">
+                    <div
+                      class="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900"
+                      :style="{ borderColor: service.color }"
+                    >
+                      <img :src="service.icon" alt="" aria-hidden="true" class="h-8 w-8 object-contain" loading="lazy" />
+                    </div>
+                    <div>
+                      <p class="text-sm font-semibold text-white">{{ service.title }}</p>
+                      <p class="text-xs text-slate-400">{{ service.description }}</p>
+                    </div>
+                  </div>
+                  <div class="mt-3 flex min-h-[36px] items-center justify-between text-xs text-slate-400">
+                    <span class="truncate">{{ service.url }}</span>
+                    <button
+                      type="button"
+                      class="rounded-full bg-gradient-to-r from-sky-500 to-violet-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white shadow-[0_10px_25px_rgba(15,23,42,0.65)] transition hover:opacity-90"
+                      @click="addService(service)"
+                    >
+                      Add
+                    </button>
+                  </div>
+                </article>
+              </div>
             </div>
 
             <div class="grid gap-5 lg:grid-cols-2">
@@ -133,7 +177,7 @@
                 </li>
               </ul>
               <div v-else class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-sm text-slate-400">
-                No chat services are configured yet. Add one below to get started, and it will appear on the left rail.
+                No chat services are configured yet. Use the quick-add panel above or the form below to install a client.
               </div>
             </div>
 
@@ -203,11 +247,12 @@
 
 <script setup>
 import { computed, reactive, ref } from 'vue';
-import { accentColors, defaultTabs } from './data/defaultTabs.mjs';
+import { accentColors, serviceCatalog } from './data/serviceCatalog.mjs';
 import defaultIconUrl from './assets/icons/custom.svg?url';
 
 const defaultIcon = defaultIconUrl;
-const tabs = ref(defaultTabs.map((tab) => ({ ...tab })));
+const availableServices = serviceCatalog;
+const tabs = ref([]);
 const activeTabId = ref('chappy');
 
 const activeTab = computed(() => {
@@ -238,6 +283,23 @@ const selectTab = (id) => {
   activeTabId.value = id;
 };
 
+const generateTabId = (hint = 'tab') => `${hint}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+
+const addService = (service) => {
+  const id = generateTabId(service.id);
+  tabs.value = [
+    ...tabs.value,
+    {
+      id,
+      title: service.title,
+      url: service.url,
+      color: service.color,
+      icon: service.icon
+    }
+  ];
+  activeTabId.value = id;
+};
+
 const isValidUrl = (value) => {
   try {
     return Boolean(new URL(value));
@@ -261,14 +323,17 @@ const addTab = () => {
     return;
   }
 
-  const baseId = trimmedTitle
+  let candidateId = trimmedTitle
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '') || `tab-${Date.now()}`;
-  let candidateId = baseId;
-  let suffix = 1;
+    .replace(/(^-|-$)/g, '');
+
+  if (!candidateId) {
+    candidateId = generateTabId('custom');
+  }
+
   while (tabs.value.some((tab) => tab.id === candidateId)) {
-    candidateId = `${baseId}-${suffix++}`;
+    candidateId = generateTabId(trimmedTitle || 'custom');
   }
 
   const color = accentColors[tabs.value.length % accentColors.length];
@@ -306,3 +371,4 @@ const removeTab = (id) => {
   }
 };
 </script>
+

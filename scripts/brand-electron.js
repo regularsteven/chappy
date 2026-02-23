@@ -5,7 +5,6 @@ const ELECTRON_INFO = path.join(__dirname, '../node_modules/electron/dist/Electr
 const BRANDING = {
   CFBundleDisplayName: 'Chappy',
   CFBundleName: 'Chappy',
-  CFBundleExecutable: 'Chappy',
   CFBundleIdentifier: 'com.regularsteven.chappy'
 };
 
