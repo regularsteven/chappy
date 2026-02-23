@@ -254,14 +254,168 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { accentColors, serviceCatalog } from './data/serviceCatalog.mjs';
 import defaultIconUrl from './assets/icons/custom.svg?url';
 
+const CONFIG_VERSION = 1;
 const defaultIcon = defaultIconUrl;
 const availableServices = serviceCatalog;
 const tabs = ref([]);
 const activeTabId = ref('chappy');
+const hasLoadedConfig = ref(false);
+const chappyApi = typeof window !== 'undefined' ? window.chappy : null;
+
+const iconById = availableServices.reduce(
+  (accumulator, service) => {
+    accumulator[service.id] = service.icon || defaultIcon;
+    return accumulator;
+  },
+  { custom: defaultIcon }
+);
+
+const sanitizeToken = (value, fallback = 'tab') => {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || fallback;
+};
+
+const suffix = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+const generateTabId = (hint = 'tab') => `${sanitizeToken(hint, 'tab')}-${suffix()}`;
+const generatePartitionKey = (hint = 'tab') => `sandbox-${sanitizeToken(hint, 'tab')}-${suffix()}`;
+
+const isValidHttpsUrl = (value) => {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:';
+  } catch (error) {
+    return false;
+  }
+};
+
+const resolveIconById = (iconId) => iconById[iconId] || defaultIcon;
+const resolveIcon = (icon) => icon || defaultIcon;
+
+const ensureUniqueTabId = (seed) => {
+  let candidate = sanitizeToken(seed, 'tab');
+  if (!tabs.value.some((tab) => tab.id === candidate)) {
+    return candidate;
+  }
+  do {
+    candidate = generateTabId(seed);
+  } while (tabs.value.some((tab) => tab.id === candidate));
+  return candidate;
+};
+
+const ensureUniquePartition = (seed) => {
+  let candidate = sanitizeToken(seed, 'sandbox-tab');
+  if (!tabs.value.some((tab) => tab.partition === candidate)) {
+    return candidate;
+  }
+  do {
+    candidate = generatePartitionKey(seed);
+  } while (tabs.value.some((tab) => tab.partition === candidate));
+  return candidate;
+};
+
+const sanitizeColor = (value, fallback) =>
+  typeof value === 'string' && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : fallback;
+
+const hydrateTab = (inputTab, index) => {
+  if (!inputTab || typeof inputTab !== 'object') {
+    return null;
+  }
+
+  const title = typeof inputTab.title === 'string' ? inputTab.title.trim() : '';
+  const url = typeof inputTab.url === 'string' ? inputTab.url.trim() : '';
+  if (!title || !isValidHttpsUrl(url)) {
+    return null;
+  }
+
+  const idSeed = typeof inputTab.id === 'string' && inputTab.id.trim() ? inputTab.id : `tab-${index + 1}`;
+  const id = ensureUniqueTabId(idSeed);
+  const partitionSeed =
+    typeof inputTab.partition === 'string' && inputTab.partition.trim()
+      ? inputTab.partition
+      : `sandbox-${id}`;
+  const partition = ensureUniquePartition(partitionSeed);
+  const iconId = sanitizeToken(inputTab.iconId, 'custom');
+  const color = sanitizeColor(inputTab.color, accentColors[index % accentColors.length]);
+
+  return {
+    id,
+    title,
+    url,
+    color,
+    iconId,
+    icon: resolveIconById(iconId),
+    partition
+  };
+};
+
+const serializeTab = (tab) => ({
+  id: tab.id,
+  title: tab.title,
+  url: tab.url,
+  color: tab.color,
+  iconId: tab.iconId || 'custom',
+  partition: tab.partition || `sandbox-${tab.id}`
+});
+
+const persistConfig = async () => {
+  if (!hasLoadedConfig.value || typeof chappyApi?.saveConfig !== 'function') {
+    return;
+  }
+  try {
+    await chappyApi.saveConfig({
+      version: CONFIG_VERSION,
+      activeTabId: activeTabId.value,
+      tabs: tabs.value.map(serializeTab)
+    });
+  } catch (error) {
+    console.error('Failed to save Chappy config.', error);
+  }
+};
+
+const loadConfig = async () => {
+  if (typeof chappyApi?.loadConfig !== 'function') {
+    hasLoadedConfig.value = true;
+    return;
+  }
+
+  try {
+    const persisted = await chappyApi.loadConfig();
+    const restoredTabs = [];
+    const inputTabs = Array.isArray(persisted?.tabs) ? persisted.tabs : [];
+    inputTabs.forEach((tab, index) => {
+      const normalized = hydrateTab(tab, index);
+      if (normalized) {
+        restoredTabs.push(normalized);
+      }
+    });
+
+    tabs.value = restoredTabs;
+
+    const candidateActive = typeof persisted?.activeTabId === 'string' ? persisted.activeTabId : 'chappy';
+    if (candidateActive === 'chappy' || restoredTabs.some((tab) => tab.id === candidateActive)) {
+      activeTabId.value = candidateActive;
+    } else {
+      activeTabId.value = 'chappy';
+    }
+  } catch (error) {
+    console.error('Failed to load Chappy config.', error);
+  } finally {
+    hasLoadedConfig.value = true;
+  }
+};
 
 const activeTab = computed(() => {
   if (activeTabId.value === 'chappy') {
@@ -276,8 +430,15 @@ const activeTab = computed(() => {
   );
 });
 
-const webviewPartition = computed(() => `persist:${activeTabId.value}`);
-const defaultUserAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36';
+const webviewPartition = computed(() => {
+  if (activeTab.value.isChappy) {
+    return 'persist:chappy';
+  }
+  return `persist:${activeTab.value.partition || activeTab.value.id}`;
+});
+
+const defaultUserAgent =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36';
 
 const newTab = reactive({
   title: '',
@@ -286,8 +447,6 @@ const newTab = reactive({
 
 const titleError = ref('');
 const urlError = ref('');
-
-const resolveIcon = (icon) => icon || defaultIcon;
 
 const handleIconError = (event) => {
   const target = event.target;
@@ -305,10 +464,9 @@ const selectTab = (id) => {
   activeTabId.value = id;
 };
 
-const generateTabId = (hint = 'tab') => `${hint}-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
-
 const addService = (service) => {
-  const id = generateTabId(service.id);
+  const id = ensureUniqueTabId(generateTabId(service.id));
+  const partition = ensureUniquePartition(generatePartitionKey(service.id));
   tabs.value = [
     ...tabs.value,
     {
@@ -316,18 +474,12 @@ const addService = (service) => {
       title: service.title,
       url: service.url,
       color: service.color,
-      icon: resolveIcon(service.icon)
+      iconId: service.id,
+      icon: resolveIconById(service.id),
+      partition
     }
   ];
   activeTabId.value = id;
-};
-
-const isValidUrl = (value) => {
-  try {
-    return Boolean(new URL(value));
-  } catch (err) {
-    return false;
-  }
 };
 
 const addTab = () => {
@@ -340,39 +492,32 @@ const addTab = () => {
     return;
   }
 
-  if (!isValidUrl(newTab.url)) {
+  const trimmedUrl = newTab.url.trim();
+  if (!isValidHttpsUrl(trimmedUrl)) {
     urlError.value = 'A valid https:// URL pointing to the client is required.';
     return;
   }
 
-  let candidateId = trimmedTitle
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
-
-  if (!candidateId) {
-    candidateId = generateTabId('custom');
-  }
-
-  while (tabs.value.some((tab) => tab.id === candidateId)) {
-    candidateId = generateTabId(trimmedTitle || 'custom');
-  }
-
+  const id = ensureUniqueTabId(trimmedTitle || 'custom');
+  const partition = ensureUniquePartition(generatePartitionKey(trimmedTitle || 'custom'));
   const color = accentColors[tabs.value.length % accentColors.length];
+
   tabs.value = [
     ...tabs.value,
     {
-      id: candidateId,
+      id,
       title: trimmedTitle,
-      url: newTab.url.trim(),
+      url: trimmedUrl,
       color,
-      icon: resolveIcon(defaultIcon)
+      iconId: 'custom',
+      icon: resolveIconById('custom'),
+      partition
     }
   ];
 
   newTab.title = '';
   newTab.url = '';
-  activeTabId.value = candidateId;
+  activeTabId.value = id;
 };
 
 const moveTab = (index, direction) => {
@@ -392,4 +537,11 @@ const removeTab = (id) => {
     activeTabId.value = 'chappy';
   }
 };
+
+watch([tabs, activeTabId], () => {
+  void persistConfig();
+}, { deep: true });
+onMounted(() => {
+  void loadConfig();
+});
 </script>

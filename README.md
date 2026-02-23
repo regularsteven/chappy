@@ -11,8 +11,11 @@ npm run dev
 ```
 
 - `npm run dev` spins up Vite and Electron together. The Chappy tab is the default landing screen and the rail starts empty. Use the quick-add grid to install WhatsApp, Messenger, Discord, Telegram, Signal, Gmail, Trello, or Google Calendar; each addition keeps its own session, and duplicates are supported.
-- `npm run build` produces a static renderer bundle in `dist/` and can be wired into any packaging process later.
+- `npm run build` creates desktop artifacts in `release/` (`.dmg`, `.zip`, and unpacked `.app`) and logs absolute file paths at the end of the build.
+- To share with testers on macOS, send the generated `.dmg` from `release/`; they can open it and drag `Chappy.app` into Applications.
 - `npm install` runs a lightweight postinstall script that patches Electron’s Info.plist so the running binary shows “Chappy” in the macOS menu bar / Command-Tab switcher during development.
+- App icons are generated from `resources/chappy-logo.svg` into `resources/chappy-logo.png` and `resources/chappy-logo.icns`, then applied to Electron branding so the default Electron icon is not used.
+- User tab configuration is persisted in `~/.chappy/config.json`. Every tab also carries its own persistent sandbox partition so duplicate services (for example two WhatsApp tabs) do not share cookies/local storage.
 
 ## UX notes
 
@@ -23,10 +26,10 @@ npm run dev
 ## Testing
 
 - `npm test` verifies the accent palette exists and every curated service entry (WhatsApp, Messenger, Discord, etc.) ships with a valid HTTPS URL before the renderer runs.
-- `npm run build` compiles the renderer bundle via Vite and confirms Tailwind/PostCSS can process the styles without runtime errors.
+- `npm run build` compiles the renderer bundle and packages a desktop app with Electron Builder.
 
 ## Next steps
 
-- Persist tab metadata to disk so order survives quits.
+- Add import/export for `~/.chappy/config.json` so workspaces can sync across machines.
 - Add per-tab session isolation helpers if you want to link to each service's local storage.
 - Package the app for macOS/Windows once the workflow is stable.

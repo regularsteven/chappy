@@ -1,5 +1,9 @@
 node_modules/
 dist/
+artifacts/
+release/
+resources/chappy-logo.png
+resources/chappy-logo.icns
 .vscode/
 .DS_Store
 npm-debug.log*
