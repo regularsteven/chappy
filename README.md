@@ -10,7 +10,7 @@ npm install
 npm run dev
 ```
 
-- `npm run dev` spins up Vite and Electron together. The Chappy tab is the default landing screen and the rail starts empty. Use the quick-add grid to install WhatsApp, Messenger, Discord, Telegram, Signal, Gmail, Trello, or Google Calendar; each addition keeps its own session, and duplicates are supported.
+- `npm run dev` spins up Vite and Electron together. The Chappy tab is the default landing screen and the rail starts empty. A helper clears port 5173 before Vite starts, so crashes from stale servers shouldn’t block the dev server. Use the quick-add grid to install WhatsApp, Messenger, Discord, Telegram, Signal, Gmail, Trello, or Google Calendar; each addition keeps its own session, and duplicates are supported.
 - `npm run build` creates desktop artifacts in `release/` (`.dmg`, `.zip`, and unpacked `.app`) and logs absolute file paths at the end of the build.
 - To share with testers on macOS, send the generated `.dmg` from `release/`; they can open it and drag `Chappy.app` into Applications.
 - If macOS blocks launch after install, run: `sudo xattr -rd com.apple.quarantine /Applications/Chappy.app`
