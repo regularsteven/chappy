@@ -1,11 +1,18 @@
 <template>
-  <div class="flex h-screen overflow-hidden bg-slate-950 text-slate-200">
-    <aside class="w-24 border-r border-slate-800 bg-slate-900 flex flex-col items-center py-6 px-1">
-      <div class="flex flex-col items-center gap-3 flex-1 w-full overflow-y-auto">
+  <div id="chappy-app-shell" class="app-shell flex h-screen overflow-hidden bg-slate-950 text-slate-200">
+    <aside
+      id="service-sidebar"
+      class="sidebar-panel flex w-28 flex-col items-center border-r border-slate-800 bg-slate-900 px-2 pb-6"
+    >
+      <div
+        id="service-tab-list"
+        class="flex w-full flex-1 flex-col items-center gap-3 overflow-y-auto overflow-x-visible pt-4 pb-2"
+      >
         <button
           v-for="tab in tabs"
           :key="tab.id"
-          class="group relative h-14 w-14 rounded-2xl border border-slate-800 transition focus-visible:outline-none"
+          :id="`service-tab-button-${tab.id}`"
+          class="service-tab-button group relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-slate-800 p-2.5 transition focus-visible:outline-none"
           :class="{
             'bg-slate-700 text-white shadow-[0_0_25px] shadow-sky-500/40': activeTabId === tab.id,
             'bg-slate-900 text-slate-400 hover:bg-slate-800': activeTabId !== tab.id
@@ -21,7 +28,7 @@
               :src="resolveIcon(tab.icon)"
               alt=""
               aria-hidden="true"
-              class="h-10 w-10"
+              class="service-tab-icon h-8 w-8 object-contain"
               loading="lazy"
               @error="handleIconError"
             />
@@ -32,49 +39,53 @@
               {{ tab.title.slice(0, 1) }}
             </span>
           </span>
-          <span class="absolute -right-1 -top-1 h-3 w-3 rounded-full" :style="{ background: tab.color }"></span>
         </button>
       </div>
       <button
-        class="mt-2 flex h-14 w-full items-center justify-center rounded-2xl border border-slate-800 bg-gradient-to-br from-violet-500/80 to-sky-500/60 text-xs font-semibold uppercase tracking-wide text-white shadow-[0_10px_25px] shadow-violet-500/30 transition hover:opacity-90 focus-visible:outline-none"
-        :class="{ 'ring-2 ring-sky-400': activeTabId === 'chappy' }"
+        id="chappy-tab-button"
+        title="Chappy"
+        class="service-tab-button chappy-tab-button mt-2 flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-slate-800 p-2.5 transition focus-visible:outline-none"
+        :class="{
+          'bg-slate-700 text-white shadow-[0_0_25px] shadow-sky-500/40 ring-2 ring-sky-400': activeTabId === 'chappy',
+          'bg-slate-900 text-slate-400 hover:bg-slate-800': activeTabId !== 'chappy'
+        }"
+        :style="activeTabId === 'chappy' ? { boxShadow: '0 0 18px rgba(56, 189, 248, 0.65)' } : {}"
         @click="selectTab('chappy')"
       >
-        Chappy
+        <span class="sr-only">Chappy</span>
+        <img
+          :src="chappyLogoUrl"
+          alt=""
+          aria-hidden="true"
+          class="service-tab-icon h-8 w-8 object-contain"
+          loading="lazy"
+        />
       </button>
     </aside>
 
-    <main class="flex-1 flex flex-col">
-      <header class="flex items-center justify-between border-b border-slate-800 bg-slate-950 px-6 py-4">
-        <div>
-          <p class="text-xs uppercase tracking-widest text-slate-500">Active space</p>
-          <h1 class="text-2xl font-semibold text-white">{{ activeTab.title }}</h1>
-          <p v-if="!activeTab.isChappy" class="text-sm text-slate-400">{{ activeTab.url }}</p>
-        </div>
+    <main id="chappy-main" class="main-content flex flex-1 flex-col">
+      <header
+        v-if="activeTab.isChappy"
+        id="chappy-header"
+        class="chappy-header flex items-center border-b border-slate-800 bg-slate-950 px-6 py-4"
+      >
         <div class="flex items-center gap-3">
-          <span class="text-xs uppercase tracking-widest text-slate-500">Session</span>
-          <span class="rounded-full bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-200">
-            {{ activeTab.isChappy ? 'Chappy controls' : 'Browser tab' }}
-          </span>
+          <img
+            :src="chappyLogoUrl"
+            alt="Chappy logo"
+            class="h-8 w-8 rounded-xl border border-white/30 bg-white p-1 object-contain"
+          />
+          <div>
+            <p class="text-xs uppercase tracking-widest text-slate-500">Workspace</p>
+            <h1 class="text-2xl font-semibold text-white">Chappy</h1>
+          </div>
         </div>
       </header>
 
-      <section class="flex-1 flex flex-col relative overflow-hidden">
-        <div v-if="activeTab.isChappy" class="flex-1 overflow-y-auto p-6">
+      <section id="workspace-content" class="workspace-content relative flex flex-1 flex-col overflow-hidden">
+        <div v-if="activeTab.isChappy" id="chappy-tab-view" class="chappy-tab-view flex-1 overflow-y-auto p-6">
           <div class="space-y-6">
-            <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-[0_0_20px_rgba(15,23,42,0.65)]">
-              <p class="text-sm text-slate-400">
-                Chappy keeps the workspace organized: tabs stay on the left rail, stacked vertically so the main
-                area stays clutter-free. Every chat client runs inside its own <span class="font-semibold text-white">webview</span>, letting you switch
-                contexts without leaving the app.
-              </p>
-              <p class="text-sm text-slate-400">
-                Your rail starts empty. Use the quick-add grid below to push a service into the rail, then reorder or
-                duplicate it as needed for multiple accounts.
-              </p>
-            </div>
-
-            <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
+            <div id="service-catalog-panel" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
               <div class="flex items-start justify-between gap-4">
                 <div>
                   <p class="text-xs uppercase tracking-widest text-slate-500">Available services</p>
@@ -84,13 +95,13 @@
                     need. Each addition keeps its own session partition.
                   </p>
                 </div>
-                <span class="text-xs font-semibold text-slate-400">Duplicates welcome</span>
               </div>
-              <div class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div id="available-services-grid" class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <article
                   v-for="service in availableServices"
                   :key="service.id"
-                  class="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-950/50 p-4 shadow-[0_10px_25px_rgba(2,6,23,0.7)] transition hover:border-sky-500/60"
+                  :id="`available-service-${service.id}`"
+                  class="service-card flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-950/50 p-4 shadow-[0_10px_25px_rgba(2,6,23,0.7)] transition hover:border-sky-500/60"
                 >
                   <div class="flex items-center gap-3">
                     <div
@@ -125,7 +136,7 @@
               </div>
             </div>
 
-            <div class="grid gap-5 lg:grid-cols-2">
+            <div id="chappy-info-panels" class="grid gap-5 lg:grid-cols-2">
               <div class="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900/70 to-slate-900/30 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
                 <p class="text-xs uppercase tracking-widest text-slate-500">Tab order</p>
                 <h2 class="text-lg font-semibold text-white">Arrange by importance</h2>
@@ -145,7 +156,7 @@
               </div>
             </div>
 
-            <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-[0_20px_40px_rgba(15,23,42,0.65)]">
+            <div id="tab-library-panel" class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-[0_20px_40px_rgba(15,23,42,0.65)]">
               <div class="flex items-center justify-between">
                 <h2 class="text-lg font-semibold text-white">Tab library</h2>
                 <span class="text-xs uppercase tracking-widest text-slate-500">Drag later</span>
@@ -190,6 +201,7 @@
             </div>
 
             <form
+              id="custom-tab-form"
               @submit.prevent="addTab"
               class="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-[0_20px_40px_rgba(15,23,42,0.7)]"
             >
@@ -234,8 +246,9 @@
           </div>
         </div>
 
-        <div v-else class="flex-1 relative overflow-hidden">
+        <div v-else id="service-webview-panel" class="relative flex-1 overflow-hidden">
           <webview
+            id="service-webview"
             v-if="activeTab.url"
             :key="activeTab.id"
             :src="activeTab.url"
@@ -257,6 +270,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { accentColors, serviceCatalog } from './data/serviceCatalog.mjs';
 import defaultIconUrl from './assets/icons/custom.svg?url';
+import chappyLogoUrl from '../../resources/chappy-logo.svg?url';
 
 const CONFIG_VERSION = 1;
 const defaultIcon = defaultIconUrl;
