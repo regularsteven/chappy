@@ -4,6 +4,8 @@ import { resolve } from 'path';
 
 export default defineConfig({
   root: '.',
+  // Use relative asset paths so Electron file:// loads work in packaged builds.
+  base: './',
   plugins: [vue()],
   build: {
     outDir: 'dist',
