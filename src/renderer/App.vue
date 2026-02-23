@@ -17,12 +17,13 @@
           <span class="sr-only">{{ tab.title }}</span>
           <span class="flex h-full w-full items-center justify-center">
             <img
-              v-if="tab.icon"
-              :src="tab.icon"
+              v-if="resolveIcon(tab.icon)"
+              :src="resolveIcon(tab.icon)"
               alt=""
               aria-hidden="true"
               class="h-10 w-10"
               loading="lazy"
+              @error="handleIconError"
             />
             <span
               v-else
@@ -96,7 +97,14 @@
                       class="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900"
                       :style="{ borderColor: service.color }"
                     >
-                      <img :src="service.icon" alt="" aria-hidden="true" class="h-8 w-8 object-contain" loading="lazy" />
+                      <img
+                        :src="resolveIcon(service.icon)"
+                        alt=""
+                        aria-hidden="true"
+                        class="h-8 w-8 object-contain"
+                        loading="lazy"
+                        @error="handleIconError"
+                      />
                     </div>
                     <div>
                       <p class="text-sm font-semibold text-white">{{ service.title }}</p>
@@ -279,6 +287,20 @@ const newTab = reactive({
 const titleError = ref('');
 const urlError = ref('');
 
+const resolveIcon = (icon) => icon || defaultIcon;
+
+const handleIconError = (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLImageElement)) {
+    return;
+  }
+  if (target.dataset.iconFallbackApplied === '1') {
+    return;
+  }
+  target.dataset.iconFallbackApplied = '1';
+  target.src = defaultIcon;
+};
+
 const selectTab = (id) => {
   activeTabId.value = id;
 };
@@ -294,7 +316,7 @@ const addService = (service) => {
       title: service.title,
       url: service.url,
       color: service.color,
-      icon: service.icon
+      icon: resolveIcon(service.icon)
     }
   ];
   activeTabId.value = id;
@@ -344,7 +366,7 @@ const addTab = () => {
       title: trimmedTitle,
       url: newTab.url.trim(),
       color,
-      icon: defaultIcon
+      icon: resolveIcon(defaultIcon)
     }
   ];
 
@@ -371,4 +393,3 @@ const removeTab = (id) => {
   }
 };
 </script>
-
