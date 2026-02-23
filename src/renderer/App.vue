@@ -49,7 +49,7 @@
             <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-[0_0_20px_rgba(15,23,42,0.65)]">
               <p class="text-sm text-slate-400">
                 Chappy keeps the workspace organized: tabs stay on the left rail, stacked vertically so the main
-                area stays clutter-free. Every chat clients runs inside its own <span class="font-semibold text-white">iframe</span>, letting you switch
+                area stays clutter-free. Every chat clients runs inside its own <span class="font-semibold text-white">webview</span>, letting you switch
                 contexts without leaving the app.
               </p>
               <p class="text-sm text-slate-400">
@@ -158,13 +158,18 @@
           </div>
         </div>
 
-        <iframe
-          v-else
-          :src="activeTab.url"
-          class="h-full w-full border-0"
-          key="activeTab.id"
-          sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin"
-        ></iframe>
+        <div v-else class="flex-1 relative overflow-hidden">
+          <webview
+            v-if="activeTab.url"
+            :key="activeTab.id"
+            :src="activeTab.url"
+            :partition="webviewPartition"
+            class="h-full w-full border-0"
+          ></webview>
+          <div v-else class="absolute inset-0 flex items-center justify-center bg-slate-950 text-sm text-slate-400">
+            Select a tab to open a client.
+          </div>
+        </div>
       </section>
     </main>
   </div>
@@ -189,6 +194,8 @@ const activeTab = computed(() => {
     }
   );
 });
+
+const webviewPartition = computed(() => `persist:${activeTabId.value}`);
 
 const newTab = reactive({
   title: '',
