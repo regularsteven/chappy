@@ -83,7 +83,7 @@
                 <h2 class="text-lg font-semibold text-white">Tab library</h2>
                 <span class="text-xs uppercase tracking-widest text-slate-500">Drag later</span>
               </div>
-              <ul class="mt-4 space-y-3">
+              <ul v-if="tabs.length" class="mt-4 space-y-3">
                 <li
                   v-for="(tab, index) in tabs"
                   :key="tab.id"
@@ -108,9 +108,18 @@
                     >
                       ↓
                     </button>
+                    <button
+                      class="rounded-full border border-slate-700 px-2 text-rose-300 hover:bg-rose-400/10"
+                      @click="removeTab(tab.id)"
+                    >
+                      ✕
+                    </button>
                   </div>
                 </li>
               </ul>
+              <div v-else class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-sm text-slate-400">
+                No chat services are configured yet. Add one below to get started, and it will appear on the left rail.
+              </div>
             </div>
 
             <form
@@ -270,5 +279,12 @@ const moveTab = (index, direction) => {
   const [moved] = updated.splice(index, 1);
   updated.splice(targetIndex, 0, moved);
   tabs.value = updated;
+};
+
+const removeTab = (id) => {
+  tabs.value = tabs.value.filter((tab) => tab.id !== id);
+  if (activeTabId.value === id) {
+    activeTabId.value = 'chappy';
+  }
 };
 </script>

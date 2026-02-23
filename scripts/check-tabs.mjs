@@ -5,14 +5,10 @@ assert(Array.isArray(accentColors), 'accentColors must be an array');
 assert(accentColors.length > 0, 'accentColors must have at least one color');
 
 assert(Array.isArray(defaultTabs), 'defaultTabs must be an array');
-assert(defaultTabs.length >= 3, 'There should be at least three preconfigured chats');
-
-const requiredTabIds = ['whatsapp', 'messenger', 'discord'];
-for (const requiredId of requiredTabIds) {
-  const tab = defaultTabs.find((entry) => entry.id === requiredId);
-  assert(tab, `Missing required default tab "${requiredId}"`);
-  assert(tab.url.startsWith('https://'), `Tab "${requiredId}" must point to an https:// URL`);
-  assert(typeof tab.title === 'string' && tab.title.length > 0, `Tab "${requiredId}" needs a readable title`);
+for (const tab of defaultTabs) {
+  assert(typeof tab.id === 'string' && tab.id.length > 0, 'Each tab needs a stable id');
+  assert(typeof tab.title === 'string' && tab.title.length > 0, 'Each tab needs a title');
+  assert(typeof tab.url === 'string' && tab.url.startsWith('https://'), 'Each tab needs an HTTPS URL');
 }
 
-console.log('✅ Default chat tabs look healthy (whatsapp, messenger, discord).');
+console.log(`✅ Default chat tabs ready (${defaultTabs.length} preconfigured).`);

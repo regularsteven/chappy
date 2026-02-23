@@ -1,6 +1,6 @@
 # Chappy
 
-Chappy is a chat-focused browser shell built with Electron, Vue, and Tailwind. Each left-hand tab maps to an independent chat/web client, and the right-hand pane keeps the selected client full-bleed. The footer always pins the `Chappy` settings tab so you can reorder tabs, add new ones, and keep the rail lean.
+Chappy is a chat-focused browser shell built with Electron, Vue, and Tailwind. Each left-hand tab maps to an independent chat/web client, and the right-hand pane keeps the selected client full-bleed. The Chappy tab is always available so you can reorder tabs, add new ones, and keep the rail lean.
 
 ## Getting started
 
@@ -10,18 +10,18 @@ npm install
 npm run dev
 ```
 
-- `npm run dev` spins up Vite and Electron together. The Chappy tab is the default landing screen. Additional chat clients open in lightweight iframes.
+- `npm run dev` spins up Vite and Electron together. The Chappy tab is the default landing screen. Because there are no preconfigured chats, add your first service (WhatsApp, Messenger, Discord, etc.) to populate the rail.
 - `npm run build` produces a static renderer bundle in `dist/` and can be wired into any packaging process later.
 
 ## UX notes
 
 - The left rail is intentionally narrow. Every chat tab shows up there as a square button, and the `Chappy` button sits at the bottom so the settings are always last.
-- The Chappy tab lists all registered clients, exposes reorder controls, and lets you register custom HTTPS links (Discord, Telegram, Signal, etc.).
+- The Chappy tab lists all registered clients, exposes reorder controls, lets you remove any entry, and keeps a form for adding new HTTPS links (Discord, Telegram, Signal, etc.).
 - New tabs automatically become active so you can immediately verify they render correctly.
 
 ## Testing
 
-- `npm test` verifies the default chat tabs (WhatsApp, Messenger, Discord) and accent palette remain intact so the renderer can load without crashing.
+- `npm test` verifies the accent palette exists and every configured tab points to a proper HTTPS URL so the renderer can load without crashing.
 - `npm run build` compiles the renderer bundle via Vite and confirms Tailwind/PostCSS can process the styles without runtime errors.
 
 ## Next steps
