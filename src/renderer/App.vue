@@ -164,6 +164,8 @@
             :key="activeTab.id"
             :src="activeTab.url"
             :partition="webviewPartition"
+            :useragent="defaultUserAgent"
+            allowpopups
             class="h-full w-full border-0"
           ></webview>
           <div v-else class="absolute inset-0 flex items-center justify-center bg-slate-950 text-sm text-slate-400">
@@ -196,6 +198,7 @@ const activeTab = computed(() => {
 });
 
 const webviewPartition = computed(() => `persist:${activeTabId.value}`);
+const defaultUserAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36';
 
 const newTab = reactive({
   title: '',
