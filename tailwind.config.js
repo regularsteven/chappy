@@ -1,6 +1,6 @@
-import { defineConfig } from 'tailwindcss';
+const { defineConfig } = require('tailwindcss');
 
-export default defineConfig({
+module.exports = defineConfig({
   content: ['./index.html', './src/**/*.{vue,js,ts,jsx,tsx}'],
   theme: {
     extend: {}

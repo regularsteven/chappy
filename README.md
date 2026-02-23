@@ -19,6 +19,10 @@ npm run dev
 - The Chappy tab lists all registered clients, exposes reorder controls, and lets you register custom HTTPS links (Discord, Telegram, Signal, etc.).
 - New tabs automatically become active so you can immediately verify they render correctly.
 
+## Testing
+
+- `npm test` verifies the default chat tabs (WhatsApp, Messenger, Discord) and accent palette remain intact so the renderer can load without crashing.
+
 ## Next steps
 
 - Persist tab metadata to disk so order survives quits.
