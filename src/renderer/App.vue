@@ -233,52 +233,99 @@
               id="external-link-behavior-panel"
               class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]"
             >
-              <div class="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <p class="text-xs uppercase tracking-widest text-slate-500">Link behavior</p>
-                  <h2 class="text-lg font-semibold text-white">Use System Browser for links</h2>
-                  <p class="text-sm text-slate-400">
-                    Opens links requested as new windows (for example <code>target="_blank"</code> or
-                    <code>window.open</code>) in your default browser.
-                  </p>
-                </div>
-                <label
-                  id="use-system-browser-links-toggle-control"
-                  class="inline-flex cursor-pointer items-center gap-3 rounded-full border px-3 py-2 transition"
-                  :class="
-                    effectiveTheme === 'light'
-                      ? 'border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]'
-                      : 'border-slate-700 bg-slate-950/70'
-                  "
-                >
-                  <span
-                    class="text-xs font-semibold uppercase tracking-widest"
-                    :class="effectiveTheme === 'light' ? 'text-slate-600' : 'text-slate-400'"
-                  >
-                    {{ useSystemBrowserLinks ? 'On' : 'Off' }}
-                  </span>
-                  <input
-                    id="use-system-browser-links"
-                    v-model="useSystemBrowserLinks"
-                    type="checkbox"
-                    class="peer sr-only"
-                  >
-                  <span
-                    class="relative inline-flex h-6 w-11 rounded-full transition"
+              <div class="space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p class="text-xs uppercase tracking-widest text-slate-500">Link behavior</p>
+                    <h2 class="text-lg font-semibold text-white">Use System Browser for links</h2>
+                    <p class="text-sm text-slate-400">
+                      Opens links requested as new windows (for example <code>target="_blank"</code> or
+                      <code>window.open</code>) in your default browser.
+                    </p>
+                  </div>
+                  <label
+                    id="use-system-browser-links-toggle-control"
+                    class="inline-flex cursor-pointer items-center gap-3 rounded-full border px-3 py-2 transition"
                     :class="
-                      useSystemBrowserLinks
-                        ? 'bg-sky-500'
-                        : effectiveTheme === 'light'
-                          ? 'bg-slate-300'
-                          : 'bg-slate-700'
+                      effectiveTheme === 'light'
+                        ? 'border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]'
+                        : 'border-slate-700 bg-slate-950/70'
                     "
                   >
                     <span
-                      class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,42,0.35)] transition"
-                      :class="useSystemBrowserLinks ? 'left-[1.5rem]' : 'left-0.5'"
-                    ></span>
-                  </span>
-                </label>
+                      class="text-xs font-semibold uppercase tracking-widest"
+                      :class="effectiveTheme === 'light' ? 'text-slate-600' : 'text-slate-400'"
+                    >
+                      {{ useSystemBrowserLinks ? 'On' : 'Off' }}
+                    </span>
+                    <input
+                      id="use-system-browser-links"
+                      v-model="useSystemBrowserLinks"
+                      type="checkbox"
+                      class="peer sr-only"
+                    >
+                    <span
+                      class="relative inline-flex h-6 w-11 rounded-full transition"
+                      :class="
+                        useSystemBrowserLinks
+                          ? 'bg-sky-500'
+                          : effectiveTheme === 'light'
+                            ? 'bg-slate-300'
+                            : 'bg-slate-700'
+                      "
+                    >
+                      <span
+                        class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,42,0.35)] transition"
+                        :class="useSystemBrowserLinks ? 'left-[1.5rem]' : 'left-0.5'"
+                      ></span>
+                    </span>
+                  </label>
+                </div>
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h2 class="text-lg font-semibold text-white">Preserve Session in memory</h2>
+                    <p class="text-sm text-slate-400">
+                      Keeps visited tabs loaded in memory so switching feels instant without a full page reload.
+                    </p>
+                  </div>
+                  <label
+                    id="preserve-tab-memory-toggle-control"
+                    class="inline-flex cursor-pointer items-center gap-3 rounded-full border px-3 py-2 transition"
+                    :class="
+                      effectiveTheme === 'light'
+                        ? 'border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]'
+                        : 'border-slate-700 bg-slate-950/70'
+                    "
+                  >
+                    <span
+                      class="text-xs font-semibold uppercase tracking-widest"
+                      :class="effectiveTheme === 'light' ? 'text-slate-600' : 'text-slate-400'"
+                    >
+                      {{ preserveTabMemory ? 'On' : 'Off' }}
+                    </span>
+                    <input
+                      id="preserve-tab-memory"
+                      v-model="preserveTabMemory"
+                      type="checkbox"
+                      class="peer sr-only"
+                    >
+                    <span
+                      class="relative inline-flex h-6 w-11 rounded-full transition"
+                      :class="
+                        preserveTabMemory
+                          ? 'bg-sky-500'
+                          : effectiveTheme === 'light'
+                            ? 'bg-slate-300'
+                            : 'bg-slate-700'
+                      "
+                    >
+                      <span
+                        class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,42,0.35)] transition"
+                        :class="preserveTabMemory ? 'left-[1.5rem]' : 'left-0.5'"
+                      ></span>
+                    </span>
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -380,20 +427,41 @@
         </div>
 
         <div v-else id="service-webview-panel" class="relative flex-1 overflow-hidden">
-          <webview
-            id="service-webview"
-            ref="webviewRef"
-            v-if="activeTabLaunchUrl"
-            :key="activeTab.id"
-            :src="activeTabLaunchUrl"
-            :partition="webviewPartition"
-            :useragent="defaultUserAgent"
-            allowpopups
-            class="h-full w-full border-0"
-          ></webview>
-          <div v-else class="absolute inset-0 flex items-center justify-center bg-slate-950 text-sm text-slate-400">
-            Select a tab to open a client.
-          </div>
+          <template v-if="preserveTabMemory">
+            <webview
+              v-for="tab in tabs"
+              id="service-webview"
+              :key="`preserved-webview-${tab.id}`"
+              v-show="activeTabId === tab.id"
+              v-if="activeTabId === tab.id || isTabLoaded(tab.id)"
+              :ref="(element) => setPreservedWebviewRef(tab.id, element)"
+              :src="resolveLaunchUrl(tab)"
+              :partition="resolveWebviewPartition(tab)"
+              :useragent="defaultUserAgent"
+              allowpopups
+              class="h-full w-full border-0"
+              @did-navigate="(event) => handleWebViewNavigationForTab(tab.id, event)"
+              @did-navigate-in-page="(event) => handleWebViewNavigationForTab(tab.id, event)"
+            ></webview>
+          </template>
+          <template v-else>
+            <webview
+              id="service-webview"
+              ref="singleWebviewRef"
+              v-if="activeTabLaunchUrl"
+              :key="activeTab.id"
+              :src="activeTabLaunchUrl"
+              :partition="activeTabWebviewPartition"
+              :useragent="defaultUserAgent"
+              allowpopups
+              class="h-full w-full border-0"
+              @did-navigate="(event) => handleWebViewNavigationForTab(activeTab.id, event)"
+              @did-navigate-in-page="(event) => handleWebViewNavigationForTab(activeTab.id, event)"
+            ></webview>
+            <div v-else class="absolute inset-0 flex items-center justify-center bg-slate-950 text-sm text-slate-400">
+              Select a tab to open a client.
+            </div>
+          </template>
         </div>
       </section>
     </main>
@@ -417,7 +485,9 @@ const isSettingsModalOpen = ref(false);
 const editingTab = ref(null);
 
 
-const webviewRef = ref(null);
+const singleWebviewRef = ref(null);
+const preservedWebviewRefs = new Map();
+const loadedTabIds = ref([]);
 const CONFIG_VERSION = 1;
 const defaultIcon = defaultIconUrl;
 const availableServices = serviceCatalog;
@@ -435,6 +505,7 @@ const themePreferenceValues = new Set(themePreferenceOptions.map((option) => opt
 const normalizeThemePreference = (value) => (themePreferenceValues.has(value) ? value : 'system');
 const themePreference = ref('system');
 const useSystemBrowserLinks = ref(true);
+const preserveTabMemory = ref(true);
 const systemPrefersDark = ref(true);
 
 const iconById = availableServices.reduce(
@@ -511,6 +582,21 @@ const handleSystemThemeChange = (event) => {
     return;
   }
   systemPrefersDark.value = prefersDarkMediaQuery ? prefersDarkMediaQuery.matches : true;
+};
+
+const isTabLoaded = (tabId) => loadedTabIds.value.includes(tabId);
+const markTabLoaded = (tabId) => {
+  if (tabId === 'chappy' || isTabLoaded(tabId)) {
+    return;
+  }
+  loadedTabIds.value = [...loadedTabIds.value, tabId];
+};
+const setPreservedWebviewRef = (tabId, element) => {
+  if (element) {
+    preservedWebviewRefs.set(tabId, element);
+    return;
+  }
+  preservedWebviewRefs.delete(tabId);
 };
 
 const ensureUniqueTabId = (seed) => {
@@ -629,6 +715,7 @@ const persistConfig = async () => {
       activeTabId: activeTabId.value,
       themePreference: themePreference.value,
       useSystemBrowserLinks: useSystemBrowserLinks.value,
+      preserveTabMemory: preserveTabMemory.value,
       tabs: tabs.value.map(serializeTab)
     });
   } catch (error) {
@@ -646,6 +733,7 @@ const loadConfig = async () => {
     const persisted = await chappyApi.loadConfig();
     themePreference.value = normalizeThemePreference(persisted?.themePreference);
     useSystemBrowserLinks.value = persisted?.useSystemBrowserLinks !== false;
+    preserveTabMemory.value = persisted?.preserveTabMemory !== false;
     const restoredTabs = [];
     const inputTabs = Array.isArray(persisted?.tabs) ? persisted.tabs : [];
     inputTabs.forEach((tab, index) => {
@@ -702,12 +790,8 @@ const activeTabLaunchUrl = computed(() => resolveLaunchUrl(activeTab.value));
 const launchModeLabel = (launchMode) =>
   launchMode === 'custom' ? 'Custom URL' : launchMode === 'preserve' ? 'Preserve Last URL' : 'Default URL';
 
-const webviewPartition = computed(() => {
-  if (activeTab.value.isChappy) {
-    return 'persist:chappy';
-  }
-  return `persist:${activeTab.value.partition || activeTab.value.id}`;
-});
+const resolveWebviewPartition = (tab) => `persist:${tab?.partition || tab?.id || 'tab'}`;
+const activeTabWebviewPartition = computed(() => resolveWebviewPartition(activeTab.value));
 
 const defaultUserAgent =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36';
@@ -763,15 +847,29 @@ const persistLastUrlForTab = (tabId, candidateUrl) => {
   });
 };
 
+const resolveWebviewForTabId = (tabId) => {
+  if (tabId === 'chappy') {
+    return null;
+  }
+  if (preserveTabMemory.value) {
+    return preservedWebviewRefs.get(tabId) || null;
+  }
+  return singleWebviewRef.value;
+};
+
 const captureActiveWebviewUrl = () => {
   if (activeTabId.value === 'chappy') {
     return;
   }
-  const webview = webviewRef.value;
+  const webview = resolveWebviewForTabId(activeTabId.value);
   if (!webview || typeof webview.getURL !== 'function') {
     return;
   }
-  persistLastUrlForTab(activeTabId.value, webview.getURL());
+  try {
+    persistLastUrlForTab(activeTabId.value, webview.getURL());
+  } catch (error) {
+    // webview might not be ready for URL inspection yet
+  }
 };
 
 const selectTab = (id) => {
@@ -779,6 +877,9 @@ const selectTab = (id) => {
     return;
   }
   captureActiveWebviewUrl();
+  if (preserveTabMemory.value) {
+    markTabLoaded(id);
+  }
   activeTabId.value = id;
 };
 
@@ -825,6 +926,9 @@ const addService = (service) => {
       lastUrl: '',
     }
   ];
+  if (preserveTabMemory.value) {
+    markTabLoaded(id);
+  }
   activeTabId.value = id;
 };
 
@@ -866,6 +970,9 @@ const addTab = () => {
 
   newTab.title = '';
   newTab.url = '';
+  if (preserveTabMemory.value) {
+    markTabLoaded(id);
+  }
   activeTabId.value = id;
 };
 
@@ -887,27 +994,31 @@ const removeTab = (id) => {
   }
 };
 
-watch([tabs, activeTabId, themePreference, useSystemBrowserLinks], () => {
-  void persistConfig();
-}, { deep: true });
-const handleWebViewNavigation = (event) => {
-  if (activeTabId.value === 'chappy') {
-    return;
-  }
-  persistLastUrlForTab(activeTabId.value, event?.url);
-};
+watch(
+  () => tabs.value.map((tab) => tab.id),
+  (tabIds) => {
+    const validIds = new Set(tabIds);
+    loadedTabIds.value = loadedTabIds.value.filter((id) => validIds.has(id));
+  },
+  { immediate: true }
+);
 
-watch(webviewRef, (newWebview, oldWebview) => {
-  if (oldWebview) {
-    oldWebview.removeEventListener('did-navigate', handleWebViewNavigation);
-    oldWebview.removeEventListener('did-navigate-in-page', handleWebViewNavigation);
-  }
-  if (newWebview) {
-    newWebview.addEventListener('did-navigate', handleWebViewNavigation);
-    newWebview.addEventListener('did-navigate-in-page', handleWebViewNavigation);
-    captureActiveWebviewUrl();
+watch([activeTabId, preserveTabMemory], ([tabId, shouldPreserve]) => {
+  if (shouldPreserve) {
+    markTabLoaded(tabId);
   }
 });
+
+watch([tabs, activeTabId, themePreference, useSystemBrowserLinks, preserveTabMemory], () => {
+  void persistConfig();
+}, { deep: true });
+
+const handleWebViewNavigationForTab = (tabId, event) => {
+  if (tabId === 'chappy') {
+    return;
+  }
+  persistLastUrlForTab(tabId, event?.url);
+};
 
 onMounted(() => {
   handleSystemThemeChange();

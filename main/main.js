@@ -23,6 +23,7 @@ const createDefaultConfig = () => ({
   activeTabId: 'chappy',
   themePreference: 'system',
   useSystemBrowserLinks: true,
+  preserveTabMemory: true,
   tabs: []
 });
 
@@ -152,6 +153,7 @@ const sanitizeConfigPayload = (payload) => {
     activeTabId,
     themePreference: sanitizeThemePreference(payload.themePreference),
     useSystemBrowserLinks: payload.useSystemBrowserLinks !== false,
+    preserveTabMemory: payload.preserveTabMemory !== false,
     tabs
   };
 };
