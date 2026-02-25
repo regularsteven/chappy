@@ -1,5 +1,9 @@
 <template>
-  <div id="chappy-app-shell" class="app-shell flex h-screen overflow-hidden bg-slate-950 text-slate-200">
+  <div
+    id="chappy-app-shell"
+    class="app-shell flex h-screen overflow-hidden bg-slate-950 text-slate-200"
+    :data-theme="effectiveTheme"
+  >
     <aside
       id="service-sidebar"
       class="sidebar-panel flex w-28 flex-col items-center border-r border-slate-800 bg-slate-900 px-2 pb-6"
@@ -53,13 +57,15 @@
         @click="selectTab('chappy')"
       >
         <span class="sr-only">Chappy</span>
-        <img
-          :src="chappyLogoUrl"
-          alt=""
-          aria-hidden="true"
-          class="service-tab-icon h-8 w-8 object-contain"
-          loading="lazy"
-        />
+        <span class="chappy-tab-icon-shell flex h-9 w-9 items-center justify-center rounded-xl border border-white/30 bg-white p-1">
+          <img
+            :src="chappyLogoUrl"
+            alt=""
+            aria-hidden="true"
+            class="service-tab-icon chappy-tab-icon h-full w-full object-contain"
+            loading="lazy"
+          />
+        </span>
       </button>
     </aside>
 
@@ -67,7 +73,7 @@
       <header
         v-if="activeTab.isChappy"
         id="chappy-header"
-        class="chappy-header flex items-center border-b border-slate-800 bg-slate-950 px-6 py-4"
+        class="chappy-header flex items-center justify-between gap-4 border-b border-slate-800 bg-slate-950 px-6 py-4"
       >
         <div class="flex items-center gap-3">
           <img
@@ -76,10 +82,41 @@
             class="h-8 w-8 rounded-xl border border-white/30 bg-white p-1 object-contain"
           />
           <div>
-            <p class="text-xs uppercase tracking-widest text-slate-500">Workspace</p>
             <h1 class="text-2xl font-semibold text-white">Chappy</h1>
           </div>
         </div>
+        <fieldset
+          id="chappy-theme-toggle"
+          class="theme-toggle inline-flex flex-wrap items-center gap-1 rounded-full border border-slate-700 bg-slate-900/80 p-1"
+          aria-label="Theme preference"
+        >
+          <legend class="sr-only">Theme preference</legend>
+          <label
+            v-for="option in themePreferenceOptions"
+            :key="option.value"
+            class="theme-toggle-option cursor-pointer"
+            :for="`chappy-theme-${option.value}`"
+          >
+            <input
+              :id="`chappy-theme-${option.value}`"
+              v-model="themePreference"
+              type="radio"
+              name="chappy-theme"
+              :value="option.value"
+              class="peer sr-only"
+            />
+            <span
+              class="block rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition"
+              :class="
+                themePreference === option.value
+                  ? 'bg-slate-700 text-white shadow-sm'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              "
+            >
+              {{ option.label }}
+            </span>
+          </label>
+        </fieldset>
       </header>
 
       <section id="workspace-content" class="workspace-content relative flex flex-1 flex-col overflow-hidden">
@@ -134,7 +171,7 @@
             <div id="tab-library-panel" class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-[0_20px_40px_rgba(15,23,42,0.65)]">
               <div class="flex items-center justify-between">
                 <h2 class="text-lg font-semibold text-white">Tab library</h2>
-                <span class="text-xs uppercase tracking-widest text-slate-500">Drag later</span>
+                <span class="text-xs uppercase tracking-widest text-slate-500">Change Order</span>
               </div>
               <ul v-if="tabs.length" class="mt-4 space-y-3">
                 <li
@@ -318,7 +355,7 @@
 
 <script setup>
 import SettingsModal from './components/SettingsModal.vue';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { accentColors, serviceCatalog } from './data/serviceCatalog.mjs';
 import defaultIconUrl from './assets/icons/custom.svg?url';
 import chappyLogoUrl from '../../resources/chappy-logo.svg?url';
@@ -336,6 +373,15 @@ const activeTabId = ref('chappy');
 const chappyWorkspaceTab = ref('your-chappy');
 const hasLoadedConfig = ref(false);
 const chappyApi = typeof window !== 'undefined' ? window.chappy : null;
+const themePreferenceOptions = [
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'system', label: 'System' },
+];
+const themePreferenceValues = new Set(themePreferenceOptions.map((option) => option.value));
+const normalizeThemePreference = (value) => (themePreferenceValues.has(value) ? value : 'system');
+const themePreference = ref('system');
+const systemPrefersDark = ref(true);
 
 const iconById = availableServices.reduce(
   (accumulator, service) => {
@@ -392,6 +438,26 @@ const isLaunchMode = (value) => launchModeOptions.includes(value);
 
 const resolveIconById = (iconId) => iconById[iconId] || defaultIcon;
 const resolveIcon = (icon) => icon || defaultIcon;
+const effectiveTheme = computed(() =>
+  themePreference.value === 'system'
+    ? systemPrefersDark.value
+      ? 'dark'
+      : 'light'
+    : themePreference.value
+);
+
+const prefersDarkMediaQuery =
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: dark)')
+    : null;
+
+const handleSystemThemeChange = (event) => {
+  if (typeof event?.matches === 'boolean') {
+    systemPrefersDark.value = event.matches;
+    return;
+  }
+  systemPrefersDark.value = prefersDarkMediaQuery ? prefersDarkMediaQuery.matches : true;
+};
 
 const ensureUniqueTabId = (seed) => {
   let candidate = sanitizeToken(seed, 'tab');
@@ -507,6 +573,7 @@ const persistConfig = async () => {
     await chappyApi.saveConfig({
       version: CONFIG_VERSION,
       activeTabId: activeTabId.value,
+      themePreference: themePreference.value,
       tabs: tabs.value.map(serializeTab)
     });
   } catch (error) {
@@ -522,6 +589,7 @@ const loadConfig = async () => {
 
   try {
     const persisted = await chappyApi.loadConfig();
+    themePreference.value = normalizeThemePreference(persisted?.themePreference);
     const restoredTabs = [];
     const inputTabs = Array.isArray(persisted?.tabs) ? persisted.tabs : [];
     inputTabs.forEach((tab, index) => {
@@ -763,7 +831,7 @@ const removeTab = (id) => {
   }
 };
 
-watch([tabs, activeTabId], () => {
+watch([tabs, activeTabId, themePreference], () => {
   void persistConfig();
 }, { deep: true });
 const handleWebViewNavigation = (event) => {
@@ -786,7 +854,26 @@ watch(webviewRef, (newWebview, oldWebview) => {
 });
 
 onMounted(() => {
+  handleSystemThemeChange();
+  if (prefersDarkMediaQuery) {
+    if (typeof prefersDarkMediaQuery.addEventListener === 'function') {
+      prefersDarkMediaQuery.addEventListener('change', handleSystemThemeChange);
+    } else if (typeof prefersDarkMediaQuery.addListener === 'function') {
+      prefersDarkMediaQuery.addListener(handleSystemThemeChange);
+    }
+  }
   void loadConfig();
+});
+
+onBeforeUnmount(() => {
+  if (!prefersDarkMediaQuery) {
+    return;
+  }
+  if (typeof prefersDarkMediaQuery.removeEventListener === 'function') {
+    prefersDarkMediaQuery.removeEventListener('change', handleSystemThemeChange);
+  } else if (typeof prefersDarkMediaQuery.removeListener === 'function') {
+    prefersDarkMediaQuery.removeListener(handleSystemThemeChange);
+  }
 });
 
 </script>

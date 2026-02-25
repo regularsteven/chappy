@@ -1,3 +1,215 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+#chappy-app-shell {
+  --ch-root-bg: #020617;
+  --ch-panel-bg: #0f172a;
+  --ch-panel-bg-soft: rgba(15, 23, 42, 0.7);
+  --ch-card-bg: rgba(2, 6, 23, 0.62);
+  --ch-card-bg-strong: rgba(2, 6, 23, 0.82);
+  --ch-border: #1e293b;
+  --ch-border-soft: #334155;
+  --ch-text-strong: #f8fafc;
+  --ch-text-primary: #e2e8f0;
+  --ch-text-secondary: #cbd5e1;
+  --ch-text-muted: #64748b;
+  --ch-tab-bg: #0f172a;
+  --ch-tab-hover: #1e293b;
+  --ch-tab-active: #334155;
+  --ch-overlay: rgba(2, 6, 23, 0.74);
+  --ch-logo-bg: #ffffff;
+  --ch-logo-border: rgba(255, 255, 255, 0.3);
+  color-scheme: dark;
+  background-color: var(--ch-root-bg);
+  color: var(--ch-text-primary);
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+
+#chappy-app-shell[data-theme='light'] {
+  --ch-root-bg: #eef2f7;
+  --ch-panel-bg: #f8fafc;
+  --ch-panel-bg-soft: rgba(248, 250, 252, 0.95);
+  --ch-card-bg: rgba(255, 255, 255, 0.95);
+  --ch-card-bg-strong: rgba(255, 255, 255, 1);
+  --ch-border: #cbd5e1;
+  --ch-border-soft: #94a3b8;
+  --ch-text-strong: #0f172a;
+  --ch-text-primary: #1e293b;
+  --ch-text-secondary: #334155;
+  --ch-text-muted: #64748b;
+  --ch-tab-bg: #f1f5f9;
+  --ch-tab-hover: #e2e8f0;
+  --ch-tab-active: #dbeafe;
+  --ch-overlay: rgba(15, 23, 42, 0.35);
+  --ch-logo-bg: #ffffff;
+  --ch-logo-border: rgba(15, 23, 42, 0.2);
+  color-scheme: light;
+}
+
+#chappy-main,
+#workspace-content,
+#chappy-tab-view {
+  background-color: var(--ch-root-bg);
+  color: var(--ch-text-primary);
+}
+
+#service-sidebar {
+  background-color: var(--ch-panel-bg);
+  border-right-color: var(--ch-border);
+}
+
+#service-sidebar .service-tab-button {
+  background-color: var(--ch-tab-bg);
+  border-color: var(--ch-border);
+  color: var(--ch-text-muted);
+}
+
+#service-sidebar .service-tab-button:hover {
+  background-color: var(--ch-tab-hover);
+  color: var(--ch-text-secondary);
+}
+
+#service-sidebar .service-tab-button.bg-slate-700 {
+  background-color: var(--ch-tab-active);
+  color: var(--ch-text-strong);
+}
+
+#service-sidebar .chappy-tab-button {
+  padding: 0.55rem;
+}
+
+#service-sidebar .chappy-tab-button .chappy-tab-icon-shell {
+  background-color: var(--ch-logo-bg);
+  border-color: var(--ch-logo-border);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
+}
+
+#service-sidebar .chappy-tab-button .chappy-tab-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#chappy-header {
+  background-color: var(--ch-root-bg);
+  border-bottom-color: var(--ch-border);
+}
+
+#chappy-header img {
+  background-color: var(--ch-logo-bg);
+  border-color: var(--ch-logo-border);
+}
+
+#chappy-theme-toggle {
+  background-color: var(--ch-panel-bg-soft);
+  border-color: var(--ch-border-soft);
+}
+
+#chappy-theme-toggle .shadow-sm {
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.24);
+}
+
+#chappy-app-shell[data-theme='light'] #go-to-configure-link {
+  color: #0c4a6e;
+  background-color: rgba(14, 165, 233, 0.2);
+  border-color: rgba(3, 105, 161, 0.45);
+}
+
+#chappy-app-shell[data-theme='light'] #go-to-configure-link:hover {
+  color: #082f49;
+  background-color: rgba(14, 165, 233, 0.3);
+}
+
+#tab-library-panel,
+#service-catalog-panel,
+#custom-tab-form,
+#your-chappy-view > div:first-child {
+  background-color: var(--ch-panel-bg-soft);
+  border-color: var(--ch-border);
+}
+
+#tab-library-panel li,
+.service-card,
+#tab-library-panel > div.mt-4.rounded-2xl,
+#custom-tab-form input,
+#configure-view .h-12.w-12.rounded-2xl {
+  background-color: var(--ch-card-bg);
+  border-color: var(--ch-border);
+}
+
+#custom-tab-form input {
+  color: var(--ch-text-strong);
+}
+
+#custom-tab-form input::placeholder {
+  color: var(--ch-text-muted);
+}
+
+#chappy-subtab-menu {
+  background-color: var(--ch-panel-bg-soft);
+  border-color: var(--ch-border);
+}
+
+#chappy-app-shell .fixed.inset-0.z-50.bg-slate-950\/75 {
+  background-color: var(--ch-overlay);
+}
+
+#chappy-app-shell .mx-auto.w-full.max-w-2xl.rounded-2xl.border.border-slate-700.bg-slate-900 {
+  background-color: var(--ch-card-bg-strong);
+  border-color: var(--ch-border-soft);
+}
+
+#chappy-app-shell .bg-slate-950,
+#chappy-app-shell .bg-slate-950\/80,
+#chappy-app-shell .bg-slate-950\/75,
+#chappy-app-shell .bg-slate-950\/60,
+#chappy-app-shell .bg-slate-950\/50 {
+  background-color: var(--ch-card-bg);
+}
+
+#chappy-app-shell .bg-slate-900,
+#chappy-app-shell .bg-slate-900\/80,
+#chappy-app-shell .bg-slate-900\/70,
+#chappy-app-shell .bg-slate-900\/60,
+#chappy-app-shell .bg-slate-900\/50 {
+  background-color: var(--ch-panel-bg-soft);
+}
+
+#chappy-app-shell .bg-slate-700 {
+  background-color: var(--ch-tab-active);
+}
+
+#chappy-app-shell .border-slate-800 {
+  border-color: var(--ch-border);
+}
+
+#chappy-app-shell .border-slate-700,
+#chappy-app-shell .border-slate-600 {
+  border-color: var(--ch-border-soft);
+}
+
+#chappy-app-shell .text-white {
+  color: var(--ch-text-strong);
+}
+
+#chappy-app-shell .text-slate-200 {
+  color: var(--ch-text-primary);
+}
+
+#chappy-app-shell .text-slate-300 {
+  color: var(--ch-text-secondary);
+}
+
+#chappy-app-shell .text-slate-400,
+#chappy-app-shell .text-slate-500 {
+  color: var(--ch-text-muted);
+}
+
+#chappy-app-shell .hover\:bg-slate-800:hover {
+  background-color: var(--ch-tab-hover);
+}
+
+#chappy-app-shell .hover\:border-slate-500:hover {
+  border-color: var(--ch-border-soft);
+}
