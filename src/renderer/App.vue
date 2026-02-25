@@ -144,9 +144,24 @@
                 >
                   <div class="space-y-0.5">
                     <p class="text-sm font-semibold text-white">{{ tab.title }}</p>
-                    <p class="text-xs text-slate-500">{{ tab.url }}</p>
+                    <p class="text-xs text-slate-500">Default: {{ tab.url }}</p>
+                    <p v-if="tab.customLaunchUrl" class="text-xs text-sky-400">
+                      Custom launch: {{ tab.customLaunchUrl }}
+                    </p>
+                    <p v-if="tab.lastUrl" class="text-xs text-emerald-400">
+                      Last visited: {{ tab.lastUrl }}
+                    </p>
+                    <p class="text-[11px] uppercase tracking-widest text-slate-500">
+                      Launch mode: {{ launchModeLabel(tab.launchMode) }}
+                    </p>
                   </div>
                   <div class="flex gap-2">
+                    <button
+                      class="rounded-full border border-slate-700 px-2 text-gray-300 hover:bg-gray-400/10"
+                      @click="openSettings(tab)"
+                    >
+                      ⚙️
+                    </button>
                     <button
                       class="rounded-full border border-slate-700 px-2 text-emerald-300 hover:bg-emerald-400/10"
                       :disabled="index === 0"
@@ -277,9 +292,10 @@
         <div v-else id="service-webview-panel" class="relative flex-1 overflow-hidden">
           <webview
             id="service-webview"
-            v-if="activeTab.url"
+            ref="webviewRef"
+            v-if="activeTabLaunchUrl"
             :key="activeTab.id"
-            :src="activeTab.url"
+            :src="activeTabLaunchUrl"
             :partition="webviewPartition"
             :useragent="defaultUserAgent"
             allowpopups
@@ -291,15 +307,27 @@
         </div>
       </section>
     </main>
+    <SettingsModal
+      v-if="isSettingsModalOpen"
+      :tab="editingTab"
+      @close="closeSettingsModal"
+      @save="handleSaveSettings"
+    />
   </div>
 </template>
 
 <script setup>
+import SettingsModal from './components/SettingsModal.vue';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { accentColors, serviceCatalog } from './data/serviceCatalog.mjs';
 import defaultIconUrl from './assets/icons/custom.svg?url';
 import chappyLogoUrl from '../../resources/chappy-logo.svg?url';
 
+const isSettingsModalOpen = ref(false);
+const editingTab = ref(null);
+
+
+const webviewRef = ref(null);
 const CONFIG_VERSION = 1;
 const defaultIcon = defaultIconUrl;
 const availableServices = serviceCatalog;
@@ -315,6 +343,13 @@ const iconById = availableServices.reduce(
     return accumulator;
   },
   { custom: defaultIcon }
+);
+const serviceDefaultUrlById = availableServices.reduce(
+  (accumulator, service) => {
+    accumulator[service.id] = service.url;
+    return accumulator;
+  },
+  {}
 );
 
 const sanitizeToken = (value, fallback = 'tab') => {
@@ -343,6 +378,17 @@ const isValidHttpsUrl = (value) => {
     return false;
   }
 };
+
+const normalizeHttpsUrl = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  return isValidHttpsUrl(trimmed) ? trimmed : '';
+};
+
+const launchModeOptions = ['default', 'custom', 'preserve'];
+const isLaunchMode = (value) => launchModeOptions.includes(value);
 
 const resolveIconById = (iconId) => iconById[iconId] || defaultIcon;
 const resolveIcon = (icon) => icon || defaultIcon;
@@ -378,8 +424,8 @@ const hydrateTab = (inputTab, index) => {
   }
 
   const title = typeof inputTab.title === 'string' ? inputTab.title.trim() : '';
-  const url = typeof inputTab.url === 'string' ? inputTab.url.trim() : '';
-  if (!title || !isValidHttpsUrl(url)) {
+  const persistedUrl = normalizeHttpsUrl(inputTab.url);
+  if (!title || !persistedUrl) {
     return null;
   }
 
@@ -392,6 +438,40 @@ const hydrateTab = (inputTab, index) => {
   const partition = ensureUniquePartition(partitionSeed);
   const iconId = sanitizeToken(inputTab.iconId, 'custom');
   const color = sanitizeColor(inputTab.color, accentColors[index % accentColors.length]);
+  const serviceDefaultUrl = normalizeHttpsUrl(serviceDefaultUrlById[iconId]);
+  const lastUrl = normalizeHttpsUrl(inputTab.lastUrl);
+
+  let url = persistedUrl;
+  let customLaunchUrl = normalizeHttpsUrl(inputTab.customLaunchUrl);
+  const hasExplicitLaunchMode = isLaunchMode(inputTab.launchMode);
+  let launchMode = hasExplicitLaunchMode
+    ? inputTab.launchMode
+    : inputTab.preserveUrl === true
+      ? 'preserve'
+      : inputTab.useCustomLaunchUrl === true
+        ? 'custom'
+        : 'default';
+
+  // Curated services keep application-defined defaults. Legacy `url` overrides migrate to custom launch.
+  if (serviceDefaultUrl) {
+    url = serviceDefaultUrl;
+    if (persistedUrl !== serviceDefaultUrl && !customLaunchUrl) {
+      customLaunchUrl = persistedUrl;
+      if (!hasExplicitLaunchMode && inputTab.preserveUrl !== true && inputTab.useCustomLaunchUrl !== true) {
+        launchMode = 'custom';
+      }
+    }
+  }
+
+  if (!isLaunchMode(launchMode)) {
+    launchMode = 'default';
+  }
+  if (launchMode === 'custom' && !customLaunchUrl) {
+    launchMode = 'default';
+  }
+  if (!isValidHttpsUrl(url)) {
+    return null;
+  }
 
   return {
     id,
@@ -400,7 +480,10 @@ const hydrateTab = (inputTab, index) => {
     color,
     iconId,
     icon: resolveIconById(iconId),
-    partition
+    partition,
+    customLaunchUrl,
+    launchMode,
+    lastUrl,
   };
 };
 
@@ -410,7 +493,10 @@ const serializeTab = (tab) => ({
   url: tab.url,
   color: tab.color,
   iconId: tab.iconId || 'custom',
-  partition: tab.partition || `sandbox-${tab.id}`
+  partition: tab.partition || `sandbox-${tab.id}`,
+  customLaunchUrl: normalizeHttpsUrl(tab.customLaunchUrl),
+  launchMode: isLaunchMode(tab.launchMode) ? tab.launchMode : 'default',
+  lastUrl: normalizeHttpsUrl(tab.lastUrl),
 });
 
 const persistConfig = async () => {
@@ -464,14 +550,33 @@ const activeTab = computed(() => {
   if (activeTabId.value === 'chappy') {
     return { id: 'chappy', title: 'Chappy', isChappy: true };
   }
-  return (
-    tabs.value.find((tab) => tab.id === activeTabId.value) || {
-      id: 'chappy',
-      title: 'Chappy',
-      isChappy: true
-    }
-  );
+  const tab = tabs.value.find((tab) => tab.id === activeTabId.value);
+  if (tab) {
+    return tab;
+  }
+  return {
+    id: 'chappy',
+    title: 'Chappy',
+    isChappy: true,
+  };
 });
+
+const resolveLaunchUrl = (tab) => {
+  if (!tab || tab.isChappy) {
+    return '';
+  }
+  if (tab.launchMode === 'preserve') {
+    return tab.lastUrl || tab.url;
+  }
+  if (tab.launchMode === 'custom') {
+    return tab.customLaunchUrl || tab.url;
+  }
+  return tab.url;
+};
+
+const activeTabLaunchUrl = computed(() => resolveLaunchUrl(activeTab.value));
+const launchModeLabel = (launchMode) =>
+  launchMode === 'custom' ? 'Custom URL' : launchMode === 'preserve' ? 'Preserve Last URL' : 'Default URL';
 
 const webviewPartition = computed(() => {
   if (activeTab.value.isChappy) {
@@ -503,12 +608,79 @@ const handleIconError = (event) => {
   target.src = defaultIcon;
 };
 
+const updateTabById = (id, updater) => {
+  const tabIndex = tabs.value.findIndex((tab) => tab.id === id);
+  if (tabIndex === -1) {
+    return;
+  }
+  const currentTab = tabs.value[tabIndex];
+  const nextTab = updater(currentTab);
+  if (!nextTab || nextTab === currentTab) {
+    return;
+  }
+  const updatedTabs = [...tabs.value];
+  updatedTabs[tabIndex] = nextTab;
+  tabs.value = updatedTabs;
+};
+
+const persistLastUrlForTab = (tabId, candidateUrl) => {
+  const normalizedUrl = normalizeHttpsUrl(candidateUrl);
+  if (!normalizedUrl) {
+    return;
+  }
+  updateTabById(tabId, (tab) => {
+    if (tab.lastUrl === normalizedUrl) {
+      return tab;
+    }
+    return {
+      ...tab,
+      lastUrl: normalizedUrl,
+    };
+  });
+};
+
+const captureActiveWebviewUrl = () => {
+  if (activeTabId.value === 'chappy') {
+    return;
+  }
+  const webview = webviewRef.value;
+  if (!webview || typeof webview.getURL !== 'function') {
+    return;
+  }
+  persistLastUrlForTab(activeTabId.value, webview.getURL());
+};
+
 const selectTab = (id) => {
+  if (id === activeTabId.value) {
+    return;
+  }
+  captureActiveWebviewUrl();
   activeTabId.value = id;
 };
 
 const setChappyWorkspaceTab = (value) => {
   chappyWorkspaceTab.value = value === 'configure' ? 'configure' : 'your-chappy';
+};
+
+const openSettings = (tab) => {
+  editingTab.value = tab;
+  isSettingsModalOpen.value = true;
+};
+
+const closeSettingsModal = () => {
+  isSettingsModalOpen.value = false;
+  editingTab.value = null;
+};
+
+const handleSaveSettings = (updatedTab) => {
+  const normalizedCustomLaunchUrl = normalizeHttpsUrl(updatedTab.customLaunchUrl);
+  const launchMode = isLaunchMode(updatedTab.launchMode) ? updatedTab.launchMode : 'default';
+  updateTabById(updatedTab.id, (tab) => ({
+    ...tab,
+    customLaunchUrl: normalizedCustomLaunchUrl,
+    launchMode: launchMode === 'custom' && !normalizedCustomLaunchUrl ? 'default' : launchMode,
+  }));
+  closeSettingsModal();
 };
 
 const addService = (service) => {
@@ -523,7 +695,10 @@ const addService = (service) => {
       color: service.color,
       iconId: service.id,
       icon: resolveIconById(service.id),
-      partition
+      partition,
+      customLaunchUrl: '',
+      launchMode: 'default',
+      lastUrl: '',
     }
   ];
   activeTabId.value = id;
@@ -558,7 +733,10 @@ const addTab = () => {
       color,
       iconId: 'custom',
       icon: resolveIconById('custom'),
-      partition
+      partition,
+      customLaunchUrl: '',
+      launchMode: 'default',
+      lastUrl: '',
     }
   ];
 
@@ -588,7 +766,27 @@ const removeTab = (id) => {
 watch([tabs, activeTabId], () => {
   void persistConfig();
 }, { deep: true });
+const handleWebViewNavigation = (event) => {
+  if (activeTabId.value === 'chappy') {
+    return;
+  }
+  persistLastUrlForTab(activeTabId.value, event?.url);
+};
+
+watch(webviewRef, (newWebview, oldWebview) => {
+  if (oldWebview) {
+    oldWebview.removeEventListener('did-navigate', handleWebViewNavigation);
+    oldWebview.removeEventListener('did-navigate-in-page', handleWebViewNavigation);
+  }
+  if (newWebview) {
+    newWebview.addEventListener('did-navigate', handleWebViewNavigation);
+    newWebview.addEventListener('did-navigate-in-page', handleWebViewNavigation);
+    captureActiveWebviewUrl();
+  }
+});
+
 onMounted(() => {
   void loadConfig();
 });
+
 </script>

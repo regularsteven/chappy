@@ -66,6 +66,7 @@ const sanitizeColor = (value, fallback = '#38bdf8') => {
   }
   return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : fallback;
 };
+const launchModes = new Set(['default', 'custom', 'preserve']);
 
 const sanitizeTab = (tab, index, ids, partitions) => {
   if (!isObject(tab)) {
@@ -84,6 +85,21 @@ const sanitizeTab = (tab, index, ids, partitions) => {
     typeof tab.partition === 'string' && tab.partition.trim() ? tab.partition : `tab-${tabId}`;
   const partition = ensureUnique(partitionSeed, partitions, `tab-${tabId}`);
   const iconId = sanitizeToken(tab.iconId, 'custom');
+  const customLaunchUrl =
+    typeof tab.customLaunchUrl === 'string' && isValidHttpsUrl(tab.customLaunchUrl.trim())
+      ? tab.customLaunchUrl.trim()
+      : '';
+  const launchModeInput =
+    typeof tab.launchMode === 'string' && launchModes.has(tab.launchMode.trim())
+      ? tab.launchMode.trim()
+      : tab.preserveUrl === true
+        ? 'preserve'
+        : tab.useCustomLaunchUrl === true
+          ? 'custom'
+          : 'default';
+  const launchMode = launchModeInput === 'custom' && !customLaunchUrl ? 'default' : launchModeInput;
+  const lastUrl =
+    typeof tab.lastUrl === 'string' && isValidHttpsUrl(tab.lastUrl.trim()) ? tab.lastUrl.trim() : '';
 
   return {
     id: tabId,
@@ -91,7 +107,12 @@ const sanitizeTab = (tab, index, ids, partitions) => {
     url,
     color: sanitizeColor(tab.color),
     iconId,
-    partition
+    partition,
+    customLaunchUrl,
+    launchMode,
+    useCustomLaunchUrl: launchMode === 'custom',
+    preserveUrl: launchMode === 'preserve',
+    lastUrl
   };
 };
 
