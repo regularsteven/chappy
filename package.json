@@ -6,7 +6,7 @@
   "scripts": {
     "prepare:icons": "node scripts/prepare-icons.js",
     "dev": "npm run prepare:icons && concurrently --kill-others-on-fail \"npm:dev:renderer\" \"npm:dev:main\"",
-    "dev:renderer": "npx kill-port 5173 >/dev/null 2>&1 && vite --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:renderer": "node scripts/free-port.js 5173 && vite --host 127.0.0.1 --port 5173 --strictPort",
     "dev:main": "wait-on http://127.0.0.1:5173 && cross-env ELECTRON_RUN_AS_NODE= VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "build:renderer": "npm run prepare:icons && vite build",
     "build:test-zip": "npm run build:renderer && node scripts/package-build.js",
@@ -20,7 +20,6 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "kill-port": "^1.6.1",
     "vue": "^3.4.0"
   },
   "devDependencies": {

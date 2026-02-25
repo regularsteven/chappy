@@ -21,6 +21,7 @@ const resolveAppIcon = () => (fs.existsSync(APP_ICON_PNG) ? APP_ICON_PNG : null)
 const createDefaultConfig = () => ({
   version: CONFIG_VERSION,
   activeTabId: 'chappy',
+  themePreference: 'system',
   tabs: []
 });
 
@@ -65,6 +66,14 @@ const sanitizeColor = (value, fallback = '#38bdf8') => {
     return fallback;
   }
   return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value) ? value : fallback;
+};
+const themePreferences = new Set(['system', 'light', 'dark']);
+const sanitizeThemePreference = (value) => {
+  if (typeof value !== 'string') {
+    return 'system';
+  }
+  const normalized = value.trim();
+  return themePreferences.has(normalized) ? normalized : 'system';
 };
 const launchModes = new Set(['default', 'custom', 'preserve']);
 
@@ -139,6 +148,7 @@ const sanitizeConfigPayload = (payload) => {
   return {
     version: CONFIG_VERSION,
     activeTabId,
+    themePreference: sanitizeThemePreference(payload.themePreference),
     tabs
   };
 };
