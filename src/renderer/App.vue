@@ -229,6 +229,59 @@
           </div>
 
           <div v-else id="configure-view" class="space-y-6">
+            <div
+              id="external-link-behavior-panel"
+              class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <p class="text-xs uppercase tracking-widest text-slate-500">Link behavior</p>
+                  <h2 class="text-lg font-semibold text-white">Use System Browser for links</h2>
+                  <p class="text-sm text-slate-400">
+                    Opens links requested as new windows (for example <code>target="_blank"</code> or
+                    <code>window.open</code>) in your default browser.
+                  </p>
+                </div>
+                <label
+                  id="use-system-browser-links-toggle-control"
+                  class="inline-flex cursor-pointer items-center gap-3 rounded-full border px-3 py-2 transition"
+                  :class="
+                    effectiveTheme === 'light'
+                      ? 'border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]'
+                      : 'border-slate-700 bg-slate-950/70'
+                  "
+                >
+                  <span
+                    class="text-xs font-semibold uppercase tracking-widest"
+                    :class="effectiveTheme === 'light' ? 'text-slate-600' : 'text-slate-400'"
+                  >
+                    {{ useSystemBrowserLinks ? 'On' : 'Off' }}
+                  </span>
+                  <input
+                    id="use-system-browser-links"
+                    v-model="useSystemBrowserLinks"
+                    type="checkbox"
+                    class="peer sr-only"
+                  >
+                  <span
+                    class="relative inline-flex h-6 w-11 rounded-full transition"
+                    :class="
+                      useSystemBrowserLinks
+                        ? 'bg-sky-500'
+                        : effectiveTheme === 'light'
+                          ? 'bg-slate-300'
+                          : 'bg-slate-700'
+                    "
+                  >
+                    <span
+                      class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,42,0.35)] transition"
+                      :class="useSystemBrowserLinks ? 'left-[1.5rem]' : 'left-0.5'"
+                    ></span>
+                  </span>
+                </label>
+              </div>
+            </div>
+
             <div id="service-catalog-panel" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
               <div class="flex items-start justify-between gap-4">
                 <div>
@@ -381,6 +434,7 @@ const themePreferenceOptions = [
 const themePreferenceValues = new Set(themePreferenceOptions.map((option) => option.value));
 const normalizeThemePreference = (value) => (themePreferenceValues.has(value) ? value : 'system');
 const themePreference = ref('system');
+const useSystemBrowserLinks = ref(true);
 const systemPrefersDark = ref(true);
 
 const iconById = availableServices.reduce(
@@ -574,6 +628,7 @@ const persistConfig = async () => {
       version: CONFIG_VERSION,
       activeTabId: activeTabId.value,
       themePreference: themePreference.value,
+      useSystemBrowserLinks: useSystemBrowserLinks.value,
       tabs: tabs.value.map(serializeTab)
     });
   } catch (error) {
@@ -590,6 +645,7 @@ const loadConfig = async () => {
   try {
     const persisted = await chappyApi.loadConfig();
     themePreference.value = normalizeThemePreference(persisted?.themePreference);
+    useSystemBrowserLinks.value = persisted?.useSystemBrowserLinks !== false;
     const restoredTabs = [];
     const inputTabs = Array.isArray(persisted?.tabs) ? persisted.tabs : [];
     inputTabs.forEach((tab, index) => {
@@ -831,7 +887,7 @@ const removeTab = (id) => {
   }
 };
 
-watch([tabs, activeTabId, themePreference], () => {
+watch([tabs, activeTabId, themePreference, useSystemBrowserLinks], () => {
   void persistConfig();
 }, { deep: true });
 const handleWebViewNavigation = (event) => {
