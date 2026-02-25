@@ -57,13 +57,15 @@
         @click="selectTab('chappy')"
       >
         <span class="sr-only">Chappy</span>
-        <img
-          :src="chappyLogoUrl"
-          alt=""
-          aria-hidden="true"
-          class="service-tab-icon h-8 w-8 object-contain"
-          loading="lazy"
-        />
+        <span class="chappy-tab-icon-shell flex h-9 w-9 items-center justify-center rounded-xl border border-white/30 bg-white p-1">
+          <img
+            :src="chappyLogoUrl"
+            alt=""
+            aria-hidden="true"
+            class="service-tab-icon chappy-tab-icon h-full w-full object-contain"
+            loading="lazy"
+          />
+        </span>
       </button>
     </aside>
 
@@ -80,7 +82,6 @@
             class="h-8 w-8 rounded-xl border border-white/30 bg-white p-1 object-contain"
           />
           <div>
-            <p class="text-xs uppercase tracking-widest text-slate-500">Workspace</p>
             <h1 class="text-2xl font-semibold text-white">Chappy</h1>
           </div>
         </div>
