@@ -171,7 +171,7 @@
             <div id="tab-library-panel" class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-[0_20px_40px_rgba(15,23,42,0.65)]">
               <div class="flex items-center justify-between">
                 <h2 class="text-lg font-semibold text-white">Tab library</h2>
-                <span class="text-xs uppercase tracking-widest text-slate-500">Drag later</span>
+                <span class="text-xs uppercase tracking-widest text-slate-500">Change Order</span>
               </div>
               <ul v-if="tabs.length" class="mt-4 space-y-3">
                 <li
