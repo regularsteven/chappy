@@ -1,36 +1,96 @@
 # Chappy
 
-Chappy is a chat-focused browser shell built with Electron, Vue, and Tailwind. Each left-hand tab maps to an independent chat/web client, and the right-hand pane keeps the selected client full-bleed. The Chappy tab is always available so you can reorder tabs, add new ones, and keep the rail lean.
+Chappy is a chat-first Electron app that runs web clients in isolated workspace tabs.
+
+## Product features
+
+- Multi-service tab rail for chat and productivity clients (for example WhatsApp, Messenger, Discord, Trello, Gmail, Calendar).
+- Per-tab launch behavior with three modes:
+  - `Default URL` (app-defined service URL)
+  - `Custom URL` (user-defined launch URL)
+  - `Preserve URL for launch` (reopen the last visited URL)
+- Per-tab persistent session partition so duplicate services do not share browser storage.
+- Workspace management in the Chappy tab: add, remove, reorder, and configure tab launch behavior.
+- Persistent local config in `~/.chappy/config.json`.
 
 ## Getting started
 
 ```bash
-cd chappy
 npm install
 npm run dev
 ```
 
-- `npm run dev` spins up Vite and Electron together. The Chappy tab is the default landing screen and the rail starts empty. A helper clears port 5173 before Vite starts, so crashes from stale servers shouldn’t block the dev server. Use the quick-add grid to install WhatsApp, Messenger, Discord, Telegram, Signal, Gmail, Trello, or Google Calendar; each addition keeps its own session, and duplicates are supported.
-- `npm run build` creates desktop artifacts in `release/` (`.dmg`, `.zip`, and unpacked `.app`) and logs absolute file paths at the end of the build.
-- To share with testers on macOS, send the generated `.dmg` from `release/`; they can open it and drag `Chappy.app` into Applications.
-- If macOS blocks launch after install, run: `sudo xattr -rd com.apple.quarantine /Applications/Chappy.app`
-- `npm install` runs a lightweight postinstall script that patches Electron’s Info.plist so the running binary shows “Chappy” in the macOS menu bar / Command-Tab switcher during development.
-- App icons are generated from `resources/chappy-logo.svg` into `resources/chappy-logo.png` and `resources/chappy-logo.icns`, then applied to Electron branding so the default Electron icon is not used.
-- User tab configuration is persisted in `~/.chappy/config.json`. Every tab also carries its own persistent sandbox partition so duplicate services (for example two WhatsApp tabs) do not share cookies/local storage.
+- `npm run dev` launches renderer + Electron (with automatic port cleanup on `5173`).
+- `npm test` validates curated services + icon coverage.
+- `npm run build:renderer` builds the renderer bundle.
+- `npm run build` creates desktop artifacts in `release/`.
 
-## UX notes
+## Branch strategy
 
-- The left rail is intentionally narrow. Every chat tab shows up there as a square button, and the `Chappy` button sits at the bottom so the settings are always last.
-- The Chappy tab lists all registered clients, exposes reorder controls, lets you remove any entry, and keeps a form for adding new HTTPS links (Discord, Telegram, Signal, etc.).
-- New tabs automatically become active so you can immediately verify they render correctly.
+Promotion model:
 
-## Testing
+```text
+feature/* -> dev -> test -> main -> v* tag -> GitHub Release
+```
 
-- `npm test` verifies the accent palette exists and every curated service entry (WhatsApp, Messenger, Discord, etc.) ships with a valid HTTPS URL before the renderer runs.
-- `npm run build` compiles the renderer bundle and packages a desktop app with Electron Builder.
+Rules:
 
-## Next steps
+- New agent-driven work starts from `dev` using a `feature/*` branch.
+- Promotion to `test` is via PR from `dev`.
+- Promotion to `main` is via PR from `test` only.
+- PR merges should be squash merges.
+- No direct pushes to `test` or `main`.
 
-- Add import/export for `~/.chappy/config.json` so workspaces can sync across machines.
-- Add per-tab session isolation helpers if you want to link to each service's local storage.
-- Package the app for macOS/Windows once the workflow is stable.
+## CI gates
+
+Workflow: `.github/workflows/pr-validation.yml`
+
+- PRs targeting `dev`: run `npm test`.
+- PRs targeting `test`: run `npm test` + `npm run build:renderer`.
+- PRs targeting `main`:
+  - fail unless source branch is exactly `test`
+  - run `npm test` + `npm run build:renderer`
+
+## Release process (tag-driven)
+
+Workflow: `.github/workflows/release.yml`
+
+1. Merge `test` into `main`.
+2. Create annotated tag on `main`:
+   - `git tag -a vX.Y.Z -m "Release vX.Y.Z"`
+3. Push tag:
+   - `git push origin vX.Y.Z`
+4. GitHub Actions builds and publishes release artifacts from `release/` (`.dmg`, `.zip`, optional `.blockmap`).
+
+Initial baseline release for this governance model is `v0.0.1`.
+
+## Contributor and agent quickstart
+
+```bash
+git checkout dev
+git pull origin dev
+git checkout -b feature/my-change
+
+# implement + verify locally
+npm test
+npm run build:renderer
+
+git push -u origin feature/my-change
+```
+
+Then promote:
+
+1. Open PR: `feature/my-change` -> `dev`
+2. Open PR: `dev` -> `test`
+3. Open PR: `test` -> `main`
+4. Tag release from `main`
+
+## Branch protection setup (GitHub UI)
+
+Enable branch protection/rulesets for `dev`, `test`, and `main`:
+
+- Require pull request before merging
+- Restrict direct pushes
+- Require status checks to pass before merge
+- Recommended: require linear history
+- Recommended: allow squash merge only

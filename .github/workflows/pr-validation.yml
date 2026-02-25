@@ -1,0 +1,52 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - test
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  guard-main-source:
+    name: guard-main-source
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce source branch for main
+        run: |
+          BASE_REF="${{ github.event.pull_request.base.ref }}"
+          HEAD_REF="${{ github.event.pull_request.head.ref }}"
+          echo "Base branch: ${BASE_REF}"
+          echo "Head branch: ${HEAD_REF}"
+          if [ "${BASE_REF}" = "main" ] && [ "${HEAD_REF}" != "test" ]; then
+            echo "Only PRs from 'test' can merge into 'main'."
+            exit 1
+          fi
+
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    needs:
+      - guard-main-source
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build renderer for test/main PRs
+        if: ${{ github.event.pull_request.base.ref == 'test' || github.event.pull_request.base.ref == 'main' }}
+        run: npm run build:renderer

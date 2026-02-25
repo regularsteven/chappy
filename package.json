@@ -1,6 +1,6 @@
 {
   "name": "chappy",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Chat-first browser built with Electron, Vue, and Tailwind.",
   "main": "main/main.js",
   "scripts": {
