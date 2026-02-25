@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const os = require('node:os');
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 
 if (app.setName) {
@@ -22,6 +22,7 @@ const createDefaultConfig = () => ({
   version: CONFIG_VERSION,
   activeTabId: 'chappy',
   themePreference: 'system',
+  useSystemBrowserLinks: true,
   tabs: []
 });
 
@@ -76,6 +77,7 @@ const sanitizeThemePreference = (value) => {
   return themePreferences.has(normalized) ? normalized : 'system';
 };
 const launchModes = new Set(['default', 'custom', 'preserve']);
+const externalProtocols = new Set(['http:', 'https:', 'mailto:', 'tel:']);
 
 const sanitizeTab = (tab, index, ids, partitions) => {
   if (!isObject(tab)) {
@@ -149,6 +151,7 @@ const sanitizeConfigPayload = (payload) => {
     version: CONFIG_VERSION,
     activeTabId,
     themePreference: sanitizeThemePreference(payload.themePreference),
+    useSystemBrowserLinks: payload.useSystemBrowserLinks !== false,
     tabs
   };
 };
@@ -176,8 +179,48 @@ const readConfig = () => {
   }
 };
 
-ipcMain.handle('chappy:load-config', () => readConfig());
-ipcMain.handle('chappy:save-config', (_event, payload) => writeConfig(payload));
+let configState = readConfig();
+
+const shouldUseSystemBrowserLinks = () => configState.useSystemBrowserLinks !== false;
+const normalizeExternalTarget = (target) => {
+  if (typeof target !== 'string') {
+    return '';
+  }
+  try {
+    const parsed = new URL(target);
+    return externalProtocols.has(parsed.protocol) ? parsed.toString() : '';
+  } catch (error) {
+    return '';
+  }
+};
+
+ipcMain.handle('chappy:load-config', () => {
+  configState = readConfig();
+  return configState;
+});
+ipcMain.handle('chappy:save-config', (_event, payload) => {
+  configState = writeConfig(payload);
+  return configState;
+});
+
+app.on('web-contents-created', (_event, contents) => {
+  if (typeof contents.setWindowOpenHandler !== 'function') {
+    return;
+  }
+
+  contents.setWindowOpenHandler(({ url }) => {
+    if (contents.getType() !== 'webview' || !shouldUseSystemBrowserLinks()) {
+      return { action: 'allow' };
+    }
+
+    const externalUrl = normalizeExternalTarget(url);
+    if (!externalUrl) {
+      return { action: 'deny' };
+    }
+    void shell.openExternal(externalUrl);
+    return { action: 'deny' };
+  });
+});
 
 const createMainWindow = () => {
   const appIcon = resolveAppIcon();
