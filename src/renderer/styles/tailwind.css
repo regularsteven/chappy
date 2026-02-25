@@ -75,6 +75,22 @@
   color: var(--ch-text-strong);
 }
 
+#service-sidebar .chappy-tab-button {
+  padding: 0.55rem;
+}
+
+#service-sidebar .chappy-tab-button .chappy-tab-icon-shell {
+  background-color: var(--ch-logo-bg);
+  border-color: var(--ch-logo-border);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
+}
+
+#service-sidebar .chappy-tab-button .chappy-tab-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 #chappy-header {
   background-color: var(--ch-root-bg);
   border-bottom-color: var(--ch-border);
