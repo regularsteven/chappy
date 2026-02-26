@@ -120,7 +120,7 @@
       </header>
 
       <section id="workspace-content" class="workspace-content relative flex flex-1 flex-col overflow-hidden">
-        <div v-if="activeTab.isChappy" id="chappy-tab-view" class="chappy-tab-view flex-1 overflow-y-auto p-6">
+        <div v-show="activeTab.isChappy" id="chappy-tab-view" class="chappy-tab-view flex-1 overflow-y-auto p-6">
           <div id="chappy-subtab-menu" class="mb-6 inline-flex rounded-2xl border border-slate-800 bg-slate-900/70 p-1">
             <button
               id="chappy-subtab-your-chappy"
@@ -286,6 +286,14 @@
                     <h2 class="text-lg font-semibold text-white">Preserve Session in memory</h2>
                     <p class="text-sm text-slate-400">
                       Keeps visited tabs loaded in memory so switching feels instant without a full page reload.
+                      <a
+                        v-if="preserveTabMemory"
+                        href="#"
+                        class="ml-1 font-semibold text-sky-400 underline decoration-sky-400/70 underline-offset-2 hover:text-sky-300"
+                        @click.prevent="resetPreservedSessionsNow"
+                      >
+                        Reset Now
+                      </a>
                     </p>
                   </div>
                   <label
@@ -426,14 +434,13 @@
           </div>
         </div>
 
-        <div v-else id="service-webview-panel" class="relative flex-1 overflow-hidden">
+        <div v-show="!activeTab.isChappy" id="service-webview-panel" class="relative flex-1 overflow-hidden">
           <template v-if="preserveTabMemory">
             <webview
-              v-for="tab in tabs"
+              v-for="tab in renderedPreservedTabs"
               id="service-webview"
-              :key="`preserved-webview-${tab.id}`"
+              :key="`preserved-webview-${tab.id}-${preserveSessionResetNonce}`"
               v-show="activeTabId === tab.id"
-              v-if="activeTabId === tab.id || isTabLoaded(tab.id)"
               :ref="(element) => setPreservedWebviewRef(tab.id, element)"
               :src="resolveLaunchUrl(tab)"
               :partition="resolveWebviewPartition(tab)"
@@ -488,6 +495,7 @@ const editingTab = ref(null);
 const singleWebviewRef = ref(null);
 const preservedWebviewRefs = new Map();
 const loadedTabIds = ref([]);
+const preserveSessionResetNonce = ref(0);
 const CONFIG_VERSION = 1;
 const defaultIcon = defaultIconUrl;
 const availableServices = serviceCatalog;
@@ -597,6 +605,14 @@ const setPreservedWebviewRef = (tabId, element) => {
     return;
   }
   preservedWebviewRefs.delete(tabId);
+};
+const resetPreservedSessionsNow = () => {
+  if (!preserveTabMemory.value) {
+    return;
+  }
+  preservedWebviewRefs.clear();
+  loadedTabIds.value = activeTabId.value === 'chappy' ? [] : [activeTabId.value];
+  preserveSessionResetNonce.value += 1;
 };
 
 const ensureUniqueTabId = (seed) => {
@@ -789,6 +805,9 @@ const resolveLaunchUrl = (tab) => {
 const activeTabLaunchUrl = computed(() => resolveLaunchUrl(activeTab.value));
 const launchModeLabel = (launchMode) =>
   launchMode === 'custom' ? 'Custom URL' : launchMode === 'preserve' ? 'Preserve Last URL' : 'Default URL';
+const renderedPreservedTabs = computed(() =>
+  tabs.value.filter((tab) => activeTabId.value === tab.id || isTabLoaded(tab.id))
+);
 
 const resolveWebviewPartition = (tab) => `persist:${tab?.partition || tab?.id || 'tab'}`;
 const activeTabWebviewPartition = computed(() => resolveWebviewPartition(activeTab.value));
