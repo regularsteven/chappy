@@ -14,6 +14,7 @@
     "build": "npm run build:desktop",
     "start": "npm run dev",
     "test": "node scripts/check-tabs.mjs",
+    "test:services": "node scripts/check-service-loads.mjs",
     "postinstall": "npm run prepare:icons && node scripts/brand-electron.js"
   },
   "keywords": [],
