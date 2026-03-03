@@ -591,6 +591,9 @@
                     <p class="text-sm text-slate-400">
                       See if a new version is available.
                     </p>
+                    <p class="mt-1 text-xs text-slate-500">
+                      Last update: {{ lastUpdateAppliedLabel }}
+                    </p>
                   </div>
                   <button
                     id="check-for-update-button"
@@ -726,6 +729,7 @@ const useSystemBrowserLinks = ref(true);
 const preserveTabMemory = ref(true);
 const openServicesOnLaunch = ref(false);
 const enableAutoUpdate = ref(true);
+const lastUpdateApplied = ref(null);
 const updateCheckStatus = ref(null);
 const isUpdateReady = ref(false);
 const toastMessage = ref(null);
@@ -1075,6 +1079,7 @@ const loadConfig = async () => {
     themePreference.value = normalizeThemePreference(persisted?.themePreference);
     useSystemBrowserLinks.value = persisted?.useSystemBrowserLinks !== false;
     enableAutoUpdate.value = persisted?.enableAutoUpdate !== false;
+    lastUpdateApplied.value = typeof persisted?.lastUpdateApplied === 'string' ? persisted.lastUpdateApplied : null;
     const shouldOpenServicesOnLaunch = persisted?.openServicesOnLaunch === true;
     preserveTabMemory.value = shouldOpenServicesOnLaunch || persisted?.preserveTabMemory !== false;
     const restoredTabs = [];
@@ -1429,6 +1434,20 @@ watch(openServicesOnLaunch, (shouldOpenOnLaunch) => {
 watch(preserveTabMemory, (shouldPreserve) => {
   if (!shouldPreserve && openServicesOnLaunch.value) {
     openServicesOnLaunch.value = false;
+  }
+});
+
+const lastUpdateAppliedLabel = computed(() => {
+  const ts = lastUpdateApplied.value;
+  if (!ts) return 'Never';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short'
+    });
+  } catch {
+    return 'Never';
   }
 });
 
