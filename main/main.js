@@ -190,6 +190,7 @@ const sanitizeConfigPayload = (payload) => {
     openServicesOnLaunch,
     enableAutoUpdate,
     lastUpdateCheck: typeof payload.lastUpdateCheck === 'string' ? payload.lastUpdateCheck : undefined,
+    lastUpdateApplied: typeof payload.lastUpdateApplied === 'string' ? payload.lastUpdateApplied : undefined,
     tabs
   };
 };
@@ -320,6 +321,8 @@ ipcMain.handle('chappy:get-update-status', () => vueUpdate.getUpdateState());
 
 ipcMain.handle('chappy:restart-to-apply', () => {
   vueUpdate.applyPendingUpdate();
+  configState.lastUpdateApplied = new Date().toISOString();
+  writeConfig(configState);
   app.relaunch();
   app.quit();
 });
