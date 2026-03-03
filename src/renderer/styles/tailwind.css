@@ -226,6 +226,12 @@
   color: var(--ch-text-muted);
 }
 
+#chappy-app-shell .notification-badge,
+#chappy-app-shell .service-add-button,
+#chappy-app-shell .add-tab-button {
+  color: #ffffff;
+}
+
 #chappy-app-shell .hover\:bg-slate-800:hover {
   background-color: var(--ch-tab-hover);
 }
