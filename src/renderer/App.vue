@@ -248,8 +248,7 @@
                     <p class="text-xs uppercase tracking-widest text-slate-500">Link behavior</p>
                     <h2 class="text-lg font-semibold text-white">Use System Browser for links</h2>
                     <p class="text-sm text-slate-400">
-                      Opens links requested as new windows (for example <code>target="_blank"</code> or
-                      <code>window.open</code>) in your default browser.
+                      Opens links requested as new windows in your default browser.
                     </p>
                   </div>
                   <label
@@ -339,6 +338,52 @@
                       <span
                         class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,42,0.35)] transition"
                         :class="preserveTabMemory ? 'left-[1.5rem]' : 'left-0.5'"
+                      ></span>
+                    </span>
+                  </label>
+                </div>
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h2 class="text-lg font-semibold text-white">Open Services on Launch</h2>
+                    <p class="text-sm text-slate-400">
+                      When starting Chappy, any services added to your Chappy will be opened on startup. This will
+                      result in a slower startup and more memory use.
+                    </p>
+                  </div>
+                  <label
+                    id="open-services-on-launch-toggle-control"
+                    class="inline-flex cursor-pointer items-center gap-3 rounded-full border px-3 py-2 transition"
+                    :class="
+                      effectiveTheme === 'light'
+                        ? 'border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]'
+                        : 'border-slate-700 bg-slate-950/70'
+                    "
+                  >
+                    <span
+                      class="text-xs font-semibold uppercase tracking-widest"
+                      :class="effectiveTheme === 'light' ? 'text-slate-600' : 'text-slate-400'"
+                    >
+                      {{ openServicesOnLaunch ? 'On' : 'Off' }}
+                    </span>
+                    <input
+                      id="open-services-on-launch"
+                      v-model="openServicesOnLaunch"
+                      type="checkbox"
+                      class="peer sr-only"
+                    >
+                    <span
+                      class="relative inline-flex h-6 w-11 rounded-full transition"
+                      :class="
+                        openServicesOnLaunch
+                          ? 'bg-sky-500'
+                          : effectiveTheme === 'light'
+                            ? 'bg-slate-300'
+                            : 'bg-slate-700'
+                      "
+                    >
+                      <span
+                        class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,42,0.35)] transition"
+                        :class="openServicesOnLaunch ? 'left-[1.5rem]' : 'left-0.5'"
                       ></span>
                     </span>
                   </label>
@@ -527,6 +572,7 @@ const normalizeThemePreference = (value) => (themePreferenceValues.has(value) ? 
 const themePreference = ref('system');
 const useSystemBrowserLinks = ref(true);
 const preserveTabMemory = ref(true);
+const openServicesOnLaunch = ref(false);
 const systemPrefersDark = ref(true);
 const unreadStateByTabId = ref({});
 
@@ -703,6 +749,11 @@ const setPreservedWebviewRef = (tabId, element) => {
   }
   preservedWebviewRefs.delete(tabId);
 };
+const preloadAllServiceTabs = () => {
+  tabs.value.forEach((tab) => {
+    markTabLoaded(tab.id);
+  });
+};
 const resetPreservedSessionsNow = () => {
   if (!preserveTabMemory.value) {
     return;
@@ -829,6 +880,7 @@ const persistConfig = async () => {
       themePreference: themePreference.value,
       useSystemBrowserLinks: useSystemBrowserLinks.value,
       preserveTabMemory: preserveTabMemory.value,
+      openServicesOnLaunch: openServicesOnLaunch.value,
       tabs: tabs.value.map(serializeTab)
     });
   } catch (error) {
@@ -846,7 +898,8 @@ const loadConfig = async () => {
     const persisted = await chappyApi.loadConfig();
     themePreference.value = normalizeThemePreference(persisted?.themePreference);
     useSystemBrowserLinks.value = persisted?.useSystemBrowserLinks !== false;
-    preserveTabMemory.value = persisted?.preserveTabMemory !== false;
+    const shouldOpenServicesOnLaunch = persisted?.openServicesOnLaunch === true;
+    preserveTabMemory.value = shouldOpenServicesOnLaunch || persisted?.preserveTabMemory !== false;
     const restoredTabs = [];
     const inputTabs = Array.isArray(persisted?.tabs) ? persisted.tabs : [];
     inputTabs.forEach((tab, index) => {
@@ -863,6 +916,10 @@ const loadConfig = async () => {
       activeTabId.value = candidateActive;
     } else {
       activeTabId.value = 'chappy';
+    }
+    openServicesOnLaunch.value = shouldOpenServicesOnLaunch;
+    if (shouldOpenServicesOnLaunch && preserveTabMemory.value) {
+      preloadAllServiceTabs();
     }
   } catch (error) {
     console.error('Failed to load Chappy config.', error);
@@ -1160,7 +1217,23 @@ watch([activeTabId, preserveTabMemory], ([tabId, shouldPreserve]) => {
   }
 });
 
-watch([tabs, activeTabId, themePreference, useSystemBrowserLinks, preserveTabMemory], () => {
+watch(openServicesOnLaunch, (shouldOpenOnLaunch) => {
+  if (shouldOpenOnLaunch) {
+    if (!preserveTabMemory.value) {
+      preserveTabMemory.value = true;
+    }
+    preloadAllServiceTabs();
+    return;
+  }
+});
+
+watch(preserveTabMemory, (shouldPreserve) => {
+  if (!shouldPreserve && openServicesOnLaunch.value) {
+    openServicesOnLaunch.value = false;
+  }
+});
+
+watch([tabs, activeTabId, themePreference, useSystemBrowserLinks, preserveTabMemory, openServicesOnLaunch], () => {
   void persistConfig();
 }, { deep: true });
 
