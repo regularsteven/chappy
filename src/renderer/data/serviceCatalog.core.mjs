@@ -11,7 +11,7 @@ export const serviceCatalogBase = [
   {
     id: 'messenger',
     title: 'Messenger',
-    url: 'https://www.messenger.com',
+    url: 'https://www.facebook.com/messages/',
     color: accentColors[1],
     description: 'Facebook’s chat client for text, audio, and video.'
   },
