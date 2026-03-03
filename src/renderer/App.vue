@@ -43,6 +43,15 @@
               {{ tab.title.slice(0, 1) }}
             </span>
           </span>
+          <span
+            v-if="tabHasUnread(tab.id)"
+            class="pointer-events-none absolute -right-1 -top-1 flex items-center justify-center rounded-full border border-slate-950 bg-rose-500 text-[10px] font-semibold leading-none text-white"
+            :class="tabUnreadCount(tab.id) === null ? 'h-3 w-3' : 'h-5 min-w-[1.2rem] px-1'"
+          >
+            <template v-if="tabUnreadCount(tab.id) !== null">
+              {{ formatUnreadCount(tabUnreadCount(tab.id)) }}
+            </template>
+          </span>
         </button>
       </div>
       <button
@@ -449,6 +458,8 @@
               class="h-full w-full border-0"
               @did-navigate="(event) => handleWebViewNavigationForTab(tab.id, event)"
               @did-navigate-in-page="(event) => handleWebViewNavigationForTab(tab.id, event)"
+              @dom-ready="() => syncUnreadStateFromWebviewTitle(tab.id)"
+              @page-title-updated="(event) => handleWebviewTitleUpdatedForTab(tab.id, event)"
             ></webview>
           </template>
           <template v-else>
@@ -464,6 +475,8 @@
               class="h-full w-full border-0"
               @did-navigate="(event) => handleWebViewNavigationForTab(activeTab.id, event)"
               @did-navigate-in-page="(event) => handleWebViewNavigationForTab(activeTab.id, event)"
+              @dom-ready="() => syncUnreadStateFromWebviewTitle(activeTab.id)"
+              @page-title-updated="(event) => handleWebviewTitleUpdatedForTab(activeTab.id, event)"
             ></webview>
             <div v-else class="absolute inset-0 flex items-center justify-center bg-slate-950 text-sm text-slate-400">
               Select a tab to open a client.
@@ -515,6 +528,7 @@ const themePreference = ref('system');
 const useSystemBrowserLinks = ref(true);
 const preserveTabMemory = ref(true);
 const systemPrefersDark = ref(true);
+const unreadStateByTabId = ref({});
 
 const iconById = availableServices.reduce(
   (accumulator, service) => {
@@ -590,6 +604,89 @@ const handleSystemThemeChange = (event) => {
     return;
   }
   systemPrefersDark.value = prefersDarkMediaQuery ? prefersDarkMediaQuery.matches : true;
+};
+
+const parseUnreadCount = (input) => {
+  const value = Number.parseInt(input, 10);
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+
+const normalizeUnreadCount = (value) => {
+  if (!Number.isFinite(value)) {
+    return null;
+  }
+  const count = Math.floor(value);
+  return count > 0 ? count : null;
+};
+
+const parseUnreadStateFromTitle = (title) => {
+  const normalizedTitle = typeof title === 'string' ? title.trim() : '';
+  if (!normalizedTitle) {
+    return { hasUnread: false, count: null };
+  }
+
+  const leadingCountMatch = normalizedTitle.match(/^[\[(]\s*(\d{1,4})\+?\s*[\])]/);
+  if (leadingCountMatch?.[1]) {
+    const count = parseUnreadCount(leadingCountMatch[1]);
+    return count === null ? { hasUnread: false, count: null } : { hasUnread: true, count };
+  }
+
+  const trailingCountMatch = normalizedTitle.match(/[\[(]\s*(\d{1,4})\+?\s*[\])]\s*$/);
+  if (trailingCountMatch?.[1]) {
+    const count = parseUnreadCount(trailingCountMatch[1]);
+    return count === null ? { hasUnread: false, count: null } : { hasUnread: true, count };
+  }
+
+  if (/^[•●◉]\s+/u.test(normalizedTitle)) {
+    return { hasUnread: true, count: null };
+  }
+
+  if (/\b(?:new|unread)\b/i.test(normalizedTitle) && /\b(?:message|messages|chat|chats)\b/i.test(normalizedTitle)) {
+    return { hasUnread: true, count: null };
+  }
+
+  return { hasUnread: false, count: null };
+};
+
+const setUnreadStateForTab = (tabId, nextState) => {
+  if (tabId === 'chappy') {
+    return;
+  }
+
+  const currentState = unreadStateByTabId.value[tabId];
+  const hasUnread = nextState?.hasUnread === true;
+  if (!hasUnread) {
+    if (!currentState) {
+      return;
+    }
+    const nextUnreadStateByTabId = { ...unreadStateByTabId.value };
+    delete nextUnreadStateByTabId[tabId];
+    unreadStateByTabId.value = nextUnreadStateByTabId;
+    return;
+  }
+
+  const count = normalizeUnreadCount(nextState?.count);
+  if (currentState?.hasUnread && currentState.count === count) {
+    return;
+  }
+
+  unreadStateByTabId.value = {
+    ...unreadStateByTabId.value,
+    [tabId]: {
+      hasUnread: true,
+      count,
+    },
+  };
+};
+
+const tabHasUnread = (tabId) => unreadStateByTabId.value[tabId]?.hasUnread === true;
+const tabUnreadCount = (tabId) => normalizeUnreadCount(unreadStateByTabId.value[tabId]?.count);
+const formatUnreadCount = (count) => {
+  const normalizedCount = normalizeUnreadCount(count);
+  if (normalizedCount === null) {
+    return '';
+  }
+  return normalizedCount > 99 ? '99+' : String(normalizedCount);
 };
 
 const isTabLoaded = (tabId) => loadedTabIds.value.includes(tabId);
@@ -876,6 +973,32 @@ const resolveWebviewForTabId = (tabId) => {
   return singleWebviewRef.value;
 };
 
+const syncUnreadStateFromTitle = (tabId, title) => {
+  if (tabId === 'chappy') {
+    return;
+  }
+  setUnreadStateForTab(tabId, parseUnreadStateFromTitle(title));
+};
+
+const syncUnreadStateFromWebviewTitle = (tabId) => {
+  if (tabId === 'chappy') {
+    return;
+  }
+  const webview = resolveWebviewForTabId(tabId);
+  if (!webview || typeof webview.getTitle !== 'function') {
+    return;
+  }
+  try {
+    syncUnreadStateFromTitle(tabId, webview.getTitle());
+  } catch (error) {
+    // webview might not be ready for title inspection yet
+  }
+};
+
+const handleWebviewTitleUpdatedForTab = (tabId, event) => {
+  syncUnreadStateFromTitle(tabId, event?.title);
+};
+
 const captureActiveWebviewUrl = () => {
   if (activeTabId.value === 'chappy') {
     return;
@@ -900,6 +1023,9 @@ const selectTab = (id) => {
     markTabLoaded(id);
   }
   activeTabId.value = id;
+  if (id !== 'chappy') {
+    syncUnreadStateFromWebviewTitle(id);
+  }
 };
 
 const setChappyWorkspaceTab = (value) => {
@@ -1018,6 +1144,12 @@ watch(
   (tabIds) => {
     const validIds = new Set(tabIds);
     loadedTabIds.value = loadedTabIds.value.filter((id) => validIds.has(id));
+    const nextUnreadStateByTabId = Object.fromEntries(
+      Object.entries(unreadStateByTabId.value).filter(([tabId]) => validIds.has(tabId))
+    );
+    if (Object.keys(nextUnreadStateByTabId).length !== Object.keys(unreadStateByTabId.value).length) {
+      unreadStateByTabId.value = nextUnreadStateByTabId;
+    }
   },
   { immediate: true }
 );
