@@ -26,18 +26,28 @@
           @click="selectTab(tab.id)"
         >
           <span class="sr-only">{{ tab.title }}</span>
-          <span class="flex h-full w-full items-center justify-center">
+          <span class="relative flex h-full w-full items-center justify-center" data-ref="service-tab-icon-wrap">
             <img
               v-if="resolveIcon(tab.icon)"
               :src="resolveIcon(tab.icon)"
               alt=""
               aria-hidden="true"
               class="service-tab-icon object-contain"
+              data-ref="service-tab-primary-icon"
               loading="lazy"
               @error="handleIconError"
             />
+            <img
+              v-if="tab.secondaryIconPath"
+              :src="`chappy-icon://local/${tab.secondaryIconPath}`"
+              alt=""
+              aria-hidden="true"
+              class="tab-secondary-icon-badge absolute left-[2.25rem] top-[2.25rem] h-5 w-5 rounded object-cover"
+              data-ref="service-tab-secondary-icon"
+              loading="lazy"
+            />
             <span
-              v-else
+              v-else-if="!resolveIcon(tab.icon)"
               class="text-lg font-semibold text-slate-200"
             >
               {{ tab.title.slice(0, 1) }}
@@ -200,23 +210,45 @@
                   v-for="(tab, index) in tabs"
                   :key="tab.id"
                   class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 p-3"
+                  :data-ref="`tab-library-item-${tab.id}`"
                 >
-                  <div class="space-y-0.5">
-                    <p class="text-sm font-semibold text-white">{{ tab.title }}</p>
-                    <p class="text-xs text-slate-500">Default: {{ tab.url }}</p>
-                    <p v-if="tab.customLaunchUrl" class="text-xs text-sky-400">
-                      Custom launch: {{ tab.customLaunchUrl }}
-                    </p>
-                    <p v-if="tab.lastUrl" class="text-xs text-emerald-400">
-                      Last visited: {{ tab.lastUrl }}
-                    </p>
-                    <p class="text-[11px] uppercase tracking-widest text-slate-500">
-                      Launch mode: {{ launchModeLabel(tab.launchMode) }}
-                    </p>
+                  <div class="flex items-start gap-3">
+                    <div class="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-visible rounded-xl border border-slate-800 bg-slate-900" data-ref="tab-library-icon-wrap">
+                      <img
+                        :src="tab.icon"
+                        alt=""
+                        class="h-8 w-8 object-contain"
+                        data-ref="tab-library-primary-icon"
+                        loading="lazy"
+                        @error="handleIconError"
+                      >
+                      <img
+                        v-if="tab.secondaryIconPath"
+                        :src="`chappy-icon://local/${tab.secondaryIconPath}`"
+                        alt=""
+                        class="tab-secondary-icon-badge absolute -bottom-1 -right-1 h-4 w-4 rounded object-cover"
+                        data-ref="tab-library-secondary-icon"
+                        loading="lazy"
+                      >
+                    </div>
+                    <div class="space-y-0.5">
+                      <p class="text-sm font-semibold text-white">{{ tab.title }}</p>
+                      <p class="text-xs text-slate-500">Default: {{ tab.url }}</p>
+                      <p v-if="tab.customLaunchUrl" class="text-xs text-sky-400">
+                        Custom launch: {{ tab.customLaunchUrl }}
+                      </p>
+                      <p v-if="tab.lastUrl" class="text-xs text-emerald-400">
+                        Last visited: {{ tab.lastUrl }}
+                      </p>
+                      <p class="text-[11px] uppercase tracking-widest text-slate-500">
+                        Launch mode: {{ launchModeLabel(tab.launchMode) }}
+                      </p>
+                    </div>
                   </div>
                   <div class="flex gap-2">
                     <button
                       class="rounded-full border border-slate-700 px-2 text-gray-300 hover:bg-gray-400/10"
+                      data-ref="tab-library-edit-button"
                       @click="openSettings(tab)"
                     >
                       ⚙️
@@ -860,17 +892,33 @@ const hydrateTab = (inputTab, index) => {
     return null;
   }
 
+  const primaryIconPath =
+    typeof inputTab.primaryIconPath === 'string' && inputTab.primaryIconPath.trim()
+      ? inputTab.primaryIconPath.trim()
+      : undefined;
+  const secondaryIconPath =
+    typeof inputTab.secondaryIconPath === 'string' && inputTab.secondaryIconPath.trim()
+      ? inputTab.secondaryIconPath.trim()
+      : undefined;
+
+  const primaryIconUrl =
+    iconId === 'custom' && primaryIconPath
+      ? `chappy-icon://local/${primaryIconPath}`
+      : resolveIconById(iconId);
+
   return {
     id,
     title,
     url,
     color,
     iconId,
-    icon: resolveIconById(iconId),
+    icon: primaryIconUrl,
     partition,
     customLaunchUrl,
     launchMode,
     lastUrl,
+    primaryIconPath,
+    secondaryIconPath,
   };
 };
 
@@ -884,6 +932,8 @@ const serializeTab = (tab) => ({
   customLaunchUrl: normalizeHttpsUrl(tab.customLaunchUrl),
   launchMode: isLaunchMode(tab.launchMode) ? tab.launchMode : 'default',
   lastUrl: normalizeHttpsUrl(tab.lastUrl),
+  primaryIconPath: tab.primaryIconPath || undefined,
+  secondaryIconPath: tab.secondaryIconPath || undefined,
 });
 
 const persistConfig = async () => {
@@ -1130,11 +1180,22 @@ const closeSettingsModal = () => {
 const handleSaveSettings = (updatedTab) => {
   const normalizedCustomLaunchUrl = normalizeHttpsUrl(updatedTab.customLaunchUrl);
   const launchMode = isLaunchMode(updatedTab.launchMode) ? updatedTab.launchMode : 'default';
-  updateTabById(updatedTab.id, (tab) => ({
-    ...tab,
-    customLaunchUrl: normalizedCustomLaunchUrl,
-    launchMode: launchMode === 'custom' && !normalizedCustomLaunchUrl ? 'default' : launchMode,
-  }));
+  updateTabById(updatedTab.id, (tab) => {
+    const base = {
+      ...tab,
+      customLaunchUrl: normalizedCustomLaunchUrl,
+      launchMode: launchMode === 'custom' && !normalizedCustomLaunchUrl ? 'default' : launchMode,
+      secondaryIconPath: updatedTab.secondaryIconPath,
+    };
+    if (tab.iconId === 'custom') {
+      base.primaryIconPath = updatedTab.primaryIconPath;
+      base.icon =
+        updatedTab.primaryIconPath
+          ? `chappy-icon://local/${updatedTab.primaryIconPath}`
+          : resolveIconById('custom');
+    }
+    return base;
+  });
   closeSettingsModal();
 };
 
