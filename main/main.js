@@ -24,6 +24,7 @@ const createDefaultConfig = () => ({
   themePreference: 'system',
   useSystemBrowserLinks: true,
   preserveTabMemory: true,
+  openServicesOnLaunch: false,
   tabs: []
 });
 
@@ -148,12 +149,16 @@ const sanitizeConfigPayload = (payload) => {
     }
   }
 
+  const openServicesOnLaunch = payload.openServicesOnLaunch === true;
+  const preserveTabMemory = openServicesOnLaunch || payload.preserveTabMemory !== false;
+
   return {
     version: CONFIG_VERSION,
     activeTabId,
     themePreference: sanitizeThemePreference(payload.themePreference),
     useSystemBrowserLinks: payload.useSystemBrowserLinks !== false,
-    preserveTabMemory: payload.preserveTabMemory !== false,
+    preserveTabMemory,
+    openServicesOnLaunch,
     tabs
   };
 };
