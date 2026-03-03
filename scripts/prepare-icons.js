@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { Resvg } = require('@resvg/resvg-js');
 
 const LOGO_SVG = path.join(__dirname, '../resources/chappy-logo.svg');
 const LOGO_PNG = path.join(__dirname, '../resources/chappy-logo.png');
@@ -24,6 +25,18 @@ const run = (command, args) => {
   }
 };
 
+const renderPngFromSvg = () => {
+  const svgMarkup = fs.readFileSync(LOGO_SVG, 'utf8');
+  const renderer = new Resvg(svgMarkup, {
+    fitTo: {
+      mode: 'width',
+      value: 1024
+    }
+  });
+  const pngData = renderer.render();
+  fs.writeFileSync(LOGO_PNG, pngData.asPng());
+};
+
 if (!fs.existsSync(LOGO_SVG)) {
   console.error(`❌ Missing logo file: ${LOGO_SVG}`);
   process.exit(1);
@@ -35,7 +48,7 @@ if (process.platform !== 'darwin') {
 }
 
 try {
-  run('sips', ['-s', 'format', 'png', '-z', '1024', '1024', LOGO_SVG, '--out', LOGO_PNG]);
+  renderPngFromSvg();
 
   fs.rmSync(ICONSET_DIR, { recursive: true, force: true });
   fs.mkdirSync(ICONSET_DIR, { recursive: true });
