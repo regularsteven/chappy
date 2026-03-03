@@ -1,7 +1,8 @@
 const fs = require('node:fs');
 const os = require('node:os');
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, net, protocol, shell } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('node:url');
 
 if (app.setName) {
   app.setName('Chappy');
@@ -14,6 +15,7 @@ if (app.setAppUserModelId) {
 const CONFIG_VERSION = 1;
 const CHAPPY_DIR = path.join(os.homedir(), '.chappy');
 const CONFIG_PATH = path.join(CHAPPY_DIR, 'config.json');
+const ICONS_DIR = path.join(CHAPPY_DIR, 'icons');
 const APP_ICON_PNG = path.join(__dirname, '../resources/chappy-logo.png');
 
 const resolveAppIcon = () => (fs.existsSync(APP_ICON_PNG) ? APP_ICON_PNG : null);
@@ -80,6 +82,26 @@ const sanitizeThemePreference = (value) => {
 };
 const launchModes = new Set(['default', 'custom', 'preserve']);
 const externalProtocols = new Set(['http:', 'https:', 'mailto:', 'tel:']);
+const ALLOWED_ICON_MIMES = new Set(['image/svg+xml', 'image/png']);
+
+const sanitizeIconPath = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const normalized = path.normalize(trimmed).replace(/^(\.\.(\/|\\|$))+/, '');
+  if (!/^icons[/\\][a-zA-Z0-9_.-]+-(?:primary|secondary)\.(svg|png)$/i.test(normalized.replace(/\\/g, '/'))) {
+    return '';
+  }
+  const fullPath = path.join(CHAPPY_DIR, normalized);
+  if (!fullPath.startsWith(ICONS_DIR)) {
+    return '';
+  }
+  return normalized.replace(/\\/g, '/');
+};
 
 const sanitizeTab = (tab, index, ids, partitions) => {
   if (!isObject(tab)) {
@@ -113,6 +135,8 @@ const sanitizeTab = (tab, index, ids, partitions) => {
   const launchMode = launchModeInput === 'custom' && !customLaunchUrl ? 'default' : launchModeInput;
   const lastUrl =
     typeof tab.lastUrl === 'string' && isValidHttpsUrl(tab.lastUrl.trim()) ? tab.lastUrl.trim() : '';
+  const primaryIconPath = sanitizeIconPath(tab.primaryIconPath);
+  const secondaryIconPath = sanitizeIconPath(tab.secondaryIconPath);
 
   return {
     id: tabId,
@@ -125,7 +149,9 @@ const sanitizeTab = (tab, index, ids, partitions) => {
     launchMode,
     useCustomLaunchUrl: launchMode === 'custom',
     preserveUrl: launchMode === 'preserve',
-    lastUrl
+    lastUrl,
+    primaryIconPath: primaryIconPath || undefined,
+    secondaryIconPath: secondaryIconPath || undefined
   };
 };
 
@@ -188,6 +214,10 @@ const readConfig = () => {
 
 let configState = readConfig();
 
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'chappy-icon', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+]);
+
 const shouldUseSystemBrowserLinks = () => configState.useSystemBrowserLinks !== false;
 const normalizeExternalTarget = (target) => {
   if (typeof target !== 'string') {
@@ -208,6 +238,69 @@ ipcMain.handle('chappy:load-config', () => {
 ipcMain.handle('chappy:save-config', (_event, payload) => {
   configState = writeConfig(payload);
   return configState;
+});
+
+ipcMain.handle('chappy:save-icon', async (_event, { tabId, type, buffer, mimeType }) => {
+  if (!tabId || !type || !buffer || !mimeType) {
+    throw new Error('chappy:save-icon requires tabId, type, buffer, and mimeType');
+  }
+  if (!['primary', 'secondary'].includes(type)) {
+    throw new Error('chappy:save-icon type must be primary or secondary');
+  }
+  if (!ALLOWED_ICON_MIMES.has(mimeType)) {
+    throw new Error('chappy:save-icon only accepts image/svg+xml or image/png');
+  }
+  const ext = mimeType === 'image/svg+xml' ? 'svg' : 'png';
+  const safeTabId = sanitizeToken(tabId, 'tab');
+  const filename = `${safeTabId}-${type}.${ext}`;
+  const relativePath = `icons/${filename}`;
+  const fullPath = path.join(CHAPPY_DIR, relativePath);
+
+  const existingTabs = configState.tabs || [];
+  const existingTab = existingTabs.find((t) => t.id === tabId);
+  if (existingTab) {
+    const existingPath = type === 'primary' ? existingTab.primaryIconPath : existingTab.secondaryIconPath;
+    if (existingPath) {
+      const oldFullPath = path.join(CHAPPY_DIR, existingPath);
+      if (fs.existsSync(oldFullPath)) {
+        fs.unlinkSync(oldFullPath);
+      }
+    }
+  }
+
+  fs.mkdirSync(ICONS_DIR, { recursive: true });
+  const data = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  fs.writeFileSync(fullPath, data);
+  return { path: relativePath };
+});
+
+ipcMain.handle('chappy:delete-icon', (_event, { path: iconPath }) => {
+  if (!iconPath || typeof iconPath !== 'string') {
+    return;
+  }
+  const sanitized = sanitizeIconPath(iconPath);
+  if (!sanitized) {
+    return;
+  }
+  const fullPath = path.join(CHAPPY_DIR, sanitized);
+  if (fs.existsSync(fullPath)) {
+    fs.unlinkSync(fullPath);
+  }
+});
+
+ipcMain.handle('chappy:resolve-icon-url', (_event, { path: iconPath }) => {
+  if (!iconPath || typeof iconPath !== 'string') {
+    return '';
+  }
+  const sanitized = sanitizeIconPath(iconPath);
+  if (!sanitized) {
+    return '';
+  }
+  const fullPath = path.join(CHAPPY_DIR, sanitized);
+  if (!fs.existsSync(fullPath)) {
+    return '';
+  }
+  return `chappy-icon://local/${sanitized}`;
 });
 
 app.on('web-contents-created', (_event, contents) => {
@@ -257,6 +350,20 @@ const createMainWindow = () => {
 };
 
 app.whenReady().then(() => {
+  protocol.handle('chappy-icon', (request) => {
+    try {
+      const url = new URL(request.url);
+      const pathname = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+      const fullPath = path.join(CHAPPY_DIR, pathname);
+      if (!fullPath.startsWith(ICONS_DIR) || !fs.existsSync(fullPath)) {
+        return new Response(null, { status: 404 });
+      }
+      return net.fetch(pathToFileURL(fullPath).toString());
+    } catch {
+      return new Response(null, { status: 404 });
+    }
+  });
+
   const appIcon = resolveAppIcon();
   if (process.platform === 'darwin' && appIcon && app.dock?.setIcon) {
     app.dock.setIcon(appIcon);

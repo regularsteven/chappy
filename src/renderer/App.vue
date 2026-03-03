@@ -26,18 +26,28 @@
           @click="selectTab(tab.id)"
         >
           <span class="sr-only">{{ tab.title }}</span>
-          <span class="flex h-full w-full items-center justify-center">
+          <span class="relative flex h-full w-full items-center justify-center" data-ref="service-tab-icon-wrap">
             <img
               v-if="resolveIcon(tab.icon)"
               :src="resolveIcon(tab.icon)"
               alt=""
               aria-hidden="true"
               class="service-tab-icon object-contain"
+              data-ref="service-tab-primary-icon"
               loading="lazy"
               @error="handleIconError"
             />
+            <img
+              v-if="tab.secondaryIconPath"
+              :src="`chappy-icon://local/${tab.secondaryIconPath}`"
+              alt=""
+              aria-hidden="true"
+              class="tab-secondary-icon-badge absolute left-[2.25rem] top-[2.25rem] h-5 w-5 rounded object-cover"
+              data-ref="service-tab-secondary-icon"
+              loading="lazy"
+            />
             <span
-              v-else
+              v-else-if="!resolveIcon(tab.icon)"
               class="text-lg font-semibold text-slate-200"
             >
               {{ tab.title.slice(0, 1) }}
@@ -45,7 +55,7 @@
           </span>
           <span
             v-if="tabHasUnread(tab.id)"
-            class="pointer-events-none absolute -right-1 -top-1 flex items-center justify-center rounded-full border border-slate-950 bg-rose-500 text-[10px] font-semibold leading-none text-white"
+            class="notification-badge pointer-events-none absolute -right-1 -top-1 flex items-center justify-center rounded-full border border-slate-950 bg-rose-500 text-[10px] font-semibold leading-none"
             :class="tabUnreadCount(tab.id) === null ? 'h-3 w-3' : 'h-5 min-w-[1.2rem] px-1'"
           >
             <template v-if="tabUnreadCount(tab.id) !== null">
@@ -157,6 +167,19 @@
             >
               Configure
             </button>
+            <button
+              id="chappy-subtab-settings"
+              type="button"
+              class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+              :class="
+                chappyWorkspaceTab === 'settings'
+                  ? 'bg-slate-700 text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              "
+              @click="setChappyWorkspaceTab('settings')"
+            >
+              Settings
+            </button>
           </div>
 
           <div v-if="chappyWorkspaceTab === 'your-chappy'" id="your-chappy-view" class="space-y-6">
@@ -187,23 +210,45 @@
                   v-for="(tab, index) in tabs"
                   :key="tab.id"
                   class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 p-3"
+                  :data-ref="`tab-library-item-${tab.id}`"
                 >
-                  <div class="space-y-0.5">
-                    <p class="text-sm font-semibold text-white">{{ tab.title }}</p>
-                    <p class="text-xs text-slate-500">Default: {{ tab.url }}</p>
-                    <p v-if="tab.customLaunchUrl" class="text-xs text-sky-400">
-                      Custom launch: {{ tab.customLaunchUrl }}
-                    </p>
-                    <p v-if="tab.lastUrl" class="text-xs text-emerald-400">
-                      Last visited: {{ tab.lastUrl }}
-                    </p>
-                    <p class="text-[11px] uppercase tracking-widest text-slate-500">
-                      Launch mode: {{ launchModeLabel(tab.launchMode) }}
-                    </p>
+                  <div class="flex items-start gap-3">
+                    <div class="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-visible rounded-xl border border-slate-800 bg-slate-900" data-ref="tab-library-icon-wrap">
+                      <img
+                        :src="tab.icon"
+                        alt=""
+                        class="h-8 w-8 object-contain"
+                        data-ref="tab-library-primary-icon"
+                        loading="lazy"
+                        @error="handleIconError"
+                      >
+                      <img
+                        v-if="tab.secondaryIconPath"
+                        :src="`chappy-icon://local/${tab.secondaryIconPath}`"
+                        alt=""
+                        class="tab-secondary-icon-badge absolute -bottom-1 -right-1 h-4 w-4 rounded object-cover"
+                        data-ref="tab-library-secondary-icon"
+                        loading="lazy"
+                      >
+                    </div>
+                    <div class="space-y-0.5">
+                      <p class="text-sm font-semibold text-white">{{ tab.title }}</p>
+                      <p class="text-xs text-slate-500">Default: {{ tab.url }}</p>
+                      <p v-if="tab.customLaunchUrl" class="text-xs text-sky-400">
+                        Custom launch: {{ tab.customLaunchUrl }}
+                      </p>
+                      <p v-if="tab.lastUrl" class="text-xs text-emerald-400">
+                        Last visited: {{ tab.lastUrl }}
+                      </p>
+                      <p class="text-[11px] uppercase tracking-widest text-slate-500">
+                        Launch mode: {{ launchModeLabel(tab.launchMode) }}
+                      </p>
+                    </div>
                   </div>
                   <div class="flex gap-2">
                     <button
                       class="rounded-full border border-slate-700 px-2 text-gray-300 hover:bg-gray-400/10"
+                      data-ref="tab-library-edit-button"
                       @click="openSettings(tab)"
                     >
                       ⚙️
@@ -237,7 +282,104 @@
             </div>
           </div>
 
-          <div v-else id="configure-view" class="space-y-6">
+          <div v-else-if="chappyWorkspaceTab === 'configure'" id="configure-view" class="space-y-6">
+            <div id="service-catalog-panel" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="text-xs uppercase tracking-widest text-slate-500">Available services</p>
+                  <h2 class="text-lg font-semibold text-white">Tap to add</h2>
+                  <p class="text-sm text-slate-400">
+                    The grid below shows curated chat and productivity services — add as many variations as you
+                    need. Each addition keeps its own session partition.
+                  </p>
+                </div>
+              </div>
+              <div id="available-services-grid" class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <article
+                  v-for="service in availableServices"
+                  :key="service.id"
+                  :id="`available-service-${service.id}`"
+                  class="service-card flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-950/50 p-4 shadow-[0_10px_25px_rgba(2,6,23,0.7)] transition hover:border-sky-500/60"
+                >
+                  <div class="flex items-center gap-3">
+                    <div
+                      class="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900"
+                      :style="{ borderColor: service.color }"
+                    >
+                      <img
+                        :src="resolveIcon(service.icon)"
+                        alt=""
+                        aria-hidden="true"
+                        class="h-8 w-8 object-contain"
+                        loading="lazy"
+                        @error="handleIconError"
+                      />
+                    </div>
+                    <div>
+                      <p class="text-sm font-semibold text-white">{{ service.title }}</p>
+                      <p class="text-xs text-slate-400">{{ service.description }}</p>
+                    </div>
+                  </div>
+                  <div class="mt-3 flex min-h-[36px] items-center justify-between text-xs text-slate-400">
+                    <span class="truncate">{{ service.url }}</span>
+                    <button
+                      type="button"
+                      class="service-add-button rounded-full bg-gradient-to-r from-sky-500 to-violet-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest shadow-[0_10px_25px_rgba(15,23,42,0.65)] transition hover:opacity-90"
+                      @click="addService(service)"
+                    >
+                      {{ serviceAddLabel(service.id) }}
+                    </button>
+                  </div>
+                </article>
+              </div>
+            </div>
+
+            <form
+              id="custom-tab-form"
+              @submit.prevent="addTab"
+              class="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-[0_20px_40px_rgba(15,23,42,0.7)]"
+            >
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-xs uppercase tracking-widest text-slate-500">New tab</p>
+                  <h2 class="text-xl font-semibold text-white">Create a workspace</h2>
+                </div>
+                <span class="text-xs font-semibold text-slate-400">{{ tabs.length }} live tabs</span>
+              </div>
+
+              <div class="mt-4 grid gap-4 sm:grid-cols-2">
+                <label class="space-y-1 text-sm">
+                  <span class="text-slate-300">Name</span>
+                  <input
+                    v-model="newTab.title"
+                    type="text"
+                    placeholder="Discord"
+                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
+                  />
+                  <p v-if="titleError" class="text-rose-400 text-xs">{{ titleError }}</p>
+                </label>
+                <label class="space-y-1 text-sm">
+                  <span class="text-slate-300">URL</span>
+                  <input
+                    v-model="newTab.url"
+                    type="url"
+                    placeholder="https://discord.com/app"
+                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
+                  />
+                  <p v-if="urlError" class="text-rose-400 text-xs">{{ urlError }}</p>
+                </label>
+              </div>
+
+              <button
+                type="submit"
+                class="add-tab-button mt-4 w-full rounded-2xl bg-gradient-to-r from-sky-500 to-violet-500 py-2 text-sm font-semibold uppercase tracking-widest shadow-[0_15px_30px_rgba(15,23,42,0.6)]"
+              >
+                Add tab
+              </button>
+            </form>
+          </div>
+
+          <div v-else id="settings-view" class="space-y-6">
             <div
               id="external-link-behavior-panel"
               class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]"
@@ -245,7 +387,7 @@
               <div class="space-y-4">
                 <div class="flex flex-wrap items-center justify-between gap-4">
                   <div>
-                    <p class="text-xs uppercase tracking-widest text-slate-500">Link behavior</p>
+                    <p class="text-xs uppercase tracking-widest text-slate-500">General settings</p>
                     <h2 class="text-lg font-semibold text-white">Use System Browser for links</h2>
                     <p class="text-sm text-slate-400">
                       Opens links requested as new windows in your default browser.
@@ -391,100 +533,6 @@
               </div>
             </div>
 
-            <div id="service-catalog-panel" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
-              <div class="flex items-start justify-between gap-4">
-                <div>
-                  <p class="text-xs uppercase tracking-widest text-slate-500">Available services</p>
-                  <h2 class="text-lg font-semibold text-white">Tap to add</h2>
-                  <p class="text-sm text-slate-400">
-                    The grid below shows curated chat and productivity services — add as many variations as you
-                    need. Each addition keeps its own session partition.
-                  </p>
-                </div>
-              </div>
-              <div id="available-services-grid" class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <article
-                  v-for="service in availableServices"
-                  :key="service.id"
-                  :id="`available-service-${service.id}`"
-                  class="service-card flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-950/50 p-4 shadow-[0_10px_25px_rgba(2,6,23,0.7)] transition hover:border-sky-500/60"
-                >
-                  <div class="flex items-center gap-3">
-                    <div
-                      class="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-800 bg-slate-900"
-                      :style="{ borderColor: service.color }"
-                    >
-                      <img
-                        :src="resolveIcon(service.icon)"
-                        alt=""
-                        aria-hidden="true"
-                        class="h-8 w-8 object-contain"
-                        loading="lazy"
-                        @error="handleIconError"
-                      />
-                    </div>
-                    <div>
-                      <p class="text-sm font-semibold text-white">{{ service.title }}</p>
-                      <p class="text-xs text-slate-400">{{ service.description }}</p>
-                    </div>
-                  </div>
-                  <div class="mt-3 flex min-h-[36px] items-center justify-between text-xs text-slate-400">
-                    <span class="truncate">{{ service.url }}</span>
-                    <button
-                      type="button"
-                      class="rounded-full bg-gradient-to-r from-sky-500 to-violet-500 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white shadow-[0_10px_25px_rgba(15,23,42,0.65)] transition hover:opacity-90"
-                      @click="addService(service)"
-                    >
-                      Add
-                    </button>
-                  </div>
-                </article>
-              </div>
-            </div>
-
-            <form
-              id="custom-tab-form"
-              @submit.prevent="addTab"
-              class="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-[0_20px_40px_rgba(15,23,42,0.7)]"
-            >
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-xs uppercase tracking-widest text-slate-500">New tab</p>
-                  <h2 class="text-xl font-semibold text-white">Create a workspace</h2>
-                </div>
-                <span class="text-xs font-semibold text-slate-400">{{ tabs.length }} live tabs</span>
-              </div>
-
-              <div class="mt-4 grid gap-4 sm:grid-cols-2">
-                <label class="space-y-1 text-sm">
-                  <span class="text-slate-300">Name</span>
-                  <input
-                    v-model="newTab.title"
-                    type="text"
-                    placeholder="Discord"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
-                  />
-                  <p v-if="titleError" class="text-rose-400 text-xs">{{ titleError }}</p>
-                </label>
-                <label class="space-y-1 text-sm">
-                  <span class="text-slate-300">URL</span>
-                  <input
-                    v-model="newTab.url"
-                    type="url"
-                    placeholder="https://discord.com/app"
-                    class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
-                  />
-                  <p v-if="urlError" class="text-rose-400 text-xs">{{ urlError }}</p>
-                </label>
-              </div>
-
-              <button
-                type="submit"
-                class="mt-4 w-full rounded-2xl bg-gradient-to-r from-sky-500 to-violet-500 py-2 text-sm font-semibold uppercase tracking-widest text-white shadow-[0_15px_30px_rgba(15,23,42,0.6)]"
-              >
-                Add tab
-              </button>
-            </form>
           </div>
         </div>
 
@@ -567,6 +615,7 @@ const themePreferenceOptions = [
   { value: 'dark', label: 'Dark' },
   { value: 'system', label: 'System' },
 ];
+const chappyWorkspaceTabValues = new Set(['your-chappy', 'configure', 'settings']);
 const themePreferenceValues = new Set(themePreferenceOptions.map((option) => option.value));
 const normalizeThemePreference = (value) => (themePreferenceValues.has(value) ? value : 'system');
 const themePreference = ref('system');
@@ -843,17 +892,33 @@ const hydrateTab = (inputTab, index) => {
     return null;
   }
 
+  const primaryIconPath =
+    typeof inputTab.primaryIconPath === 'string' && inputTab.primaryIconPath.trim()
+      ? inputTab.primaryIconPath.trim()
+      : undefined;
+  const secondaryIconPath =
+    typeof inputTab.secondaryIconPath === 'string' && inputTab.secondaryIconPath.trim()
+      ? inputTab.secondaryIconPath.trim()
+      : undefined;
+
+  const primaryIconUrl =
+    iconId === 'custom' && primaryIconPath
+      ? `chappy-icon://local/${primaryIconPath}`
+      : resolveIconById(iconId);
+
   return {
     id,
     title,
     url,
     color,
     iconId,
-    icon: resolveIconById(iconId),
+    icon: primaryIconUrl,
     partition,
     customLaunchUrl,
     launchMode,
     lastUrl,
+    primaryIconPath,
+    secondaryIconPath,
   };
 };
 
@@ -867,6 +932,8 @@ const serializeTab = (tab) => ({
   customLaunchUrl: normalizeHttpsUrl(tab.customLaunchUrl),
   launchMode: isLaunchMode(tab.launchMode) ? tab.launchMode : 'default',
   lastUrl: normalizeHttpsUrl(tab.lastUrl),
+  primaryIconPath: tab.primaryIconPath || undefined,
+  secondaryIconPath: tab.secondaryIconPath || undefined,
 });
 
 const persistConfig = async () => {
@@ -962,6 +1029,17 @@ const launchModeLabel = (launchMode) =>
 const renderedPreservedTabs = computed(() =>
   tabs.value.filter((tab) => activeTabId.value === tab.id || isTabLoaded(tab.id))
 );
+const serviceCountByIconId = computed(() =>
+  tabs.value.reduce((accumulator, tab) => {
+    const iconId = typeof tab?.iconId === 'string' ? tab.iconId : '';
+    if (!iconId) {
+      return accumulator;
+    }
+    accumulator[iconId] = (accumulator[iconId] || 0) + 1;
+    return accumulator;
+  }, {})
+);
+const serviceAddLabel = (serviceId) => (serviceCountByIconId.value[serviceId] > 0 ? 'ADD +1' : 'ADD');
 
 const resolveWebviewPartition = (tab) => `persist:${tab?.partition || tab?.id || 'tab'}`;
 const activeTabWebviewPartition = computed(() => resolveWebviewPartition(activeTab.value));
@@ -1086,7 +1164,7 @@ const selectTab = (id) => {
 };
 
 const setChappyWorkspaceTab = (value) => {
-  chappyWorkspaceTab.value = value === 'configure' ? 'configure' : 'your-chappy';
+  chappyWorkspaceTab.value = chappyWorkspaceTabValues.has(value) ? value : 'your-chappy';
 };
 
 const openSettings = (tab) => {
@@ -1102,11 +1180,22 @@ const closeSettingsModal = () => {
 const handleSaveSettings = (updatedTab) => {
   const normalizedCustomLaunchUrl = normalizeHttpsUrl(updatedTab.customLaunchUrl);
   const launchMode = isLaunchMode(updatedTab.launchMode) ? updatedTab.launchMode : 'default';
-  updateTabById(updatedTab.id, (tab) => ({
-    ...tab,
-    customLaunchUrl: normalizedCustomLaunchUrl,
-    launchMode: launchMode === 'custom' && !normalizedCustomLaunchUrl ? 'default' : launchMode,
-  }));
+  updateTabById(updatedTab.id, (tab) => {
+    const base = {
+      ...tab,
+      customLaunchUrl: normalizedCustomLaunchUrl,
+      launchMode: launchMode === 'custom' && !normalizedCustomLaunchUrl ? 'default' : launchMode,
+      secondaryIconPath: updatedTab.secondaryIconPath,
+    };
+    if (tab.iconId === 'custom') {
+      base.primaryIconPath = updatedTab.primaryIconPath;
+      base.icon =
+        updatedTab.primaryIconPath
+          ? `chappy-icon://local/${updatedTab.primaryIconPath}`
+          : resolveIconById('custom');
+    }
+    return base;
+  });
   closeSettingsModal();
 };
 

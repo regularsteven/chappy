@@ -226,6 +226,15 @@
   color: var(--ch-text-muted);
 }
 
+/* Test selectors: use [data-ref="..."] for stable element identification. */
+/* tab-secondary-icon-badge: secondary icon overlay (sidebar: 1.25rem, tab-library: 1rem) */
+
+#chappy-app-shell .notification-badge,
+#chappy-app-shell .service-add-button,
+#chappy-app-shell .add-tab-button {
+  color: #ffffff;
+}
+
 #chappy-app-shell .hover\:bg-slate-800:hover {
   background-color: var(--ch-tab-hover);
 }
