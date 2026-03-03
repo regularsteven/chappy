@@ -37,13 +37,6 @@ export const serviceCatalogBase = [
     description: 'Secure messenger with powerful desktop web client.'
   },
   {
-    id: 'signal',
-    title: 'Signal',
-    url: 'https://web.signal.org',
-    color: accentColors[4],
-    description: 'Privacy-first conversations with end-to-end encryption.'
-  },
-  {
     id: 'slack',
     title: 'Slack',
     url: 'https://app.slack.com/client',
