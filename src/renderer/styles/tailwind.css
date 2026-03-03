@@ -60,9 +60,19 @@
 }
 
 #service-sidebar .service-tab-button {
+  width: 4.5rem;
+  height: 4.5rem;
+  padding: 0.5rem;
   background-color: var(--ch-tab-bg);
   border-color: var(--ch-border);
+  border-width: 1px;
   color: var(--ch-text-muted);
+}
+
+#service-sidebar .service-tab-button .service-tab-icon {
+  display: block;
+  width: 3rem;
+  height: 3rem;
 }
 
 #service-sidebar .service-tab-button:hover {
@@ -76,10 +86,15 @@
 }
 
 #service-sidebar .chappy-tab-button {
-  padding: 0.55rem;
+  padding: 0.45rem;
+  border-color: transparent;
 }
 
 #service-sidebar .chappy-tab-button .chappy-tab-icon-shell {
+  width: 100%;
+  height: 100%;
+  padding: 0.3rem;
+  border-radius: 0.875rem;
   background-color: var(--ch-logo-bg);
   border-color: var(--ch-logo-border);
   box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.12);
@@ -96,9 +111,14 @@
   border-bottom-color: var(--ch-border);
 }
 
-#chappy-header img {
+#chappy-header .chappy-header-logo {
+  width: 3rem;
+  height: 3rem;
+  padding: 0.35rem;
+  margin-left: -0.25rem;
+  margin-right: 0.25rem;
+  border: none;
   background-color: var(--ch-logo-bg);
-  border-color: var(--ch-logo-border);
 }
 
 #chappy-theme-toggle {

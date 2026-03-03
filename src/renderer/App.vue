@@ -16,7 +16,7 @@
           v-for="tab in tabs"
           :key="tab.id"
           :id="`service-tab-button-${tab.id}`"
-          class="service-tab-button group relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-slate-800 p-2.5 transition focus-visible:outline-none"
+          class="service-tab-button group relative flex shrink-0 items-center justify-center rounded-2xl border border-slate-800 transition focus-visible:outline-none"
           :class="{
             'bg-slate-700 text-white shadow-[0_0_25px] shadow-sky-500/40': activeTabId === tab.id,
             'bg-slate-900 text-slate-400 hover:bg-slate-800': activeTabId !== tab.id
@@ -32,7 +32,7 @@
               :src="resolveIcon(tab.icon)"
               alt=""
               aria-hidden="true"
-              class="service-tab-icon h-8 w-8 object-contain"
+              class="service-tab-icon object-contain"
               loading="lazy"
               @error="handleIconError"
             />
@@ -57,7 +57,7 @@
       <button
         id="chappy-tab-button"
         title="Chappy"
-        class="service-tab-button chappy-tab-button mt-2 flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-slate-800 p-2.5 transition focus-visible:outline-none"
+        class="service-tab-button chappy-tab-button mt-2 flex shrink-0 items-center justify-center rounded-2xl border border-slate-800 transition focus-visible:outline-none"
         :class="{
           'bg-slate-700 text-white shadow-[0_0_25px] shadow-sky-500/40 ring-2 ring-sky-400': activeTabId === 'chappy',
           'bg-slate-900 text-slate-400 hover:bg-slate-800': activeTabId !== 'chappy'
@@ -66,7 +66,7 @@
         @click="selectTab('chappy')"
       >
         <span class="sr-only">Chappy</span>
-        <span class="chappy-tab-icon-shell flex h-9 w-9 items-center justify-center rounded-xl border border-white/30 bg-white p-1">
+        <span class="chappy-tab-icon-shell flex items-center justify-center rounded-xl border border-white/30 bg-white">
           <img
             :src="chappyLogoUrl"
             alt=""
@@ -88,7 +88,7 @@
           <img
             :src="chappyLogoUrl"
             alt="Chappy logo"
-            class="h-8 w-8 rounded-xl border border-white/30 bg-white p-1 object-contain"
+            class="chappy-header-logo h-8 w-8 rounded-xl border border-white/30 bg-white p-1 object-contain"
           />
           <div>
             <h1 class="text-2xl font-semibold text-white">Chappy</h1>
