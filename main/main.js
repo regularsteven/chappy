@@ -3,6 +3,7 @@ const os = require('node:os');
 const { app, BrowserWindow, ipcMain, net, protocol, shell } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('node:url');
+const vueUpdate = require('./vue-update.js');
 
 if (app.setName) {
   app.setName('Chappy');
@@ -27,6 +28,7 @@ const createDefaultConfig = () => ({
   useSystemBrowserLinks: true,
   preserveTabMemory: true,
   openServicesOnLaunch: false,
+  enableAutoUpdate: true,
   tabs: []
 });
 
@@ -177,6 +179,7 @@ const sanitizeConfigPayload = (payload) => {
 
   const openServicesOnLaunch = payload.openServicesOnLaunch === true;
   const preserveTabMemory = openServicesOnLaunch || payload.preserveTabMemory !== false;
+  const enableAutoUpdate = payload.enableAutoUpdate !== false;
 
   return {
     version: CONFIG_VERSION,
@@ -185,6 +188,8 @@ const sanitizeConfigPayload = (payload) => {
     useSystemBrowserLinks: payload.useSystemBrowserLinks !== false,
     preserveTabMemory,
     openServicesOnLaunch,
+    enableAutoUpdate,
+    lastUpdateCheck: typeof payload.lastUpdateCheck === 'string' ? payload.lastUpdateCheck : undefined,
     tabs
   };
 };
@@ -236,7 +241,8 @@ ipcMain.handle('chappy:load-config', () => {
   return configState;
 });
 ipcMain.handle('chappy:save-config', (_event, payload) => {
-  configState = writeConfig(payload);
+  const merged = isObject(payload) ? { ...configState, ...payload } : configState;
+  configState = writeConfig(merged);
   return configState;
 });
 
@@ -303,6 +309,21 @@ ipcMain.handle('chappy:resolve-icon-url', (_event, { path: iconPath }) => {
   return `chappy-icon://local/${sanitized}`;
 });
 
+ipcMain.handle('chappy:check-for-update', async () => {
+  const result = await vueUpdate.checkForUpdate(configState);
+  configState.lastUpdateCheck = new Date().toISOString();
+  writeConfig(configState);
+  return result;
+});
+
+ipcMain.handle('chappy:get-update-status', () => vueUpdate.getUpdateState());
+
+ipcMain.handle('chappy:restart-to-apply', () => {
+  vueUpdate.applyPendingUpdate();
+  app.relaunch();
+  app.quit();
+});
+
 app.on('web-contents-created', (_event, contents) => {
   if (typeof contents.setWindowOpenHandler !== 'function') {
     return;
@@ -345,11 +366,19 @@ const createMainWindow = () => {
   if (process.env.VITE_DEV_SERVER_URL) {
     browserWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    browserWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    const rendererPath = vueUpdate.getRendererPath();
+    browserWindow.loadFile(path.join(rendererPath, 'index.html'));
   }
 };
 
 app.whenReady().then(() => {
+  if (!process.env.VITE_DEV_SERVER_URL && vueUpdate.shouldRunBackgroundCheck(configState)) {
+    vueUpdate.checkForUpdate(configState).then((result) => {
+      configState.lastUpdateCheck = new Date().toISOString();
+      writeConfig(configState);
+    });
+  }
+
   protocol.handle('chappy-icon', (request) => {
     try {
       const url = new URL(request.url);

@@ -533,6 +533,78 @@
               </div>
             </div>
 
+            <div
+              v-if="chappyApi?.checkForUpdate"
+              id="vue-update-panel"
+              class="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]"
+            >
+              <div class="space-y-4">
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <p class="text-xs uppercase tracking-widest text-slate-500">Updates</p>
+                    <h2 class="text-lg font-semibold text-white">Enable Auto-Update</h2>
+                    <p class="text-sm text-slate-400">
+                      Check for updates when you open Chappy (or daily).
+                    </p>
+                  </div>
+                  <label
+                    id="enable-auto-update-toggle-control"
+                    class="inline-flex cursor-pointer items-center gap-3 rounded-full border px-3 py-2 transition"
+                    :class="
+                      effectiveTheme === 'light'
+                        ? 'border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]'
+                        : 'border-slate-700 bg-slate-950/70'
+                    "
+                  >
+                    <span
+                      class="text-xs font-semibold uppercase tracking-widest"
+                      :class="effectiveTheme === 'light' ? 'text-slate-600' : 'text-slate-400'"
+                    >
+                      {{ enableAutoUpdate ? 'On' : 'Off' }}
+                    </span>
+                    <input
+                      id="enable-auto-update"
+                      v-model="enableAutoUpdate"
+                      type="checkbox"
+                      class="peer sr-only"
+                    >
+                    <span
+                      class="relative inline-flex h-6 w-11 rounded-full transition"
+                      :class="
+                        enableAutoUpdate
+                          ? 'bg-sky-500'
+                          : effectiveTheme === 'light'
+                            ? 'bg-slate-300'
+                            : 'bg-slate-700'
+                      "
+                    >
+                      <span
+                        class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,42,0.35)] transition"
+                        :class="enableAutoUpdate ? 'left-[1.5rem]' : 'left-0.5'"
+                      ></span>
+                    </span>
+                  </label>
+                </div>
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h2 class="text-lg font-semibold text-white">Check for update</h2>
+                    <p class="text-sm text-slate-400">
+                      See if a new version is available.
+                    </p>
+                  </div>
+                  <button
+                    id="check-for-update-button"
+                    type="button"
+                    class="rounded-xl border border-slate-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+                    :disabled="updateCheckStatus === 'checking'"
+                    @click="handleCheckForUpdate"
+                  >
+                    {{ updateCheckStatus === 'checking' ? 'Checking...' : updateCheckStatus === 'available' ? 'Update available' : updateCheckStatus === 'error' ? 'Check again' : 'Check for update' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -584,6 +656,37 @@
       @close="closeSettingsModal"
       @save="handleSaveSettings"
     />
+    <div
+      v-if="toastMessage"
+      id="check-update-toast"
+      class="fixed bottom-6 right-6 z-50 flex items-center rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 shadow-[0_20px_50px_rgba(2,6,23,0.9)]"
+    >
+      <span class="text-sm font-semibold text-white">{{ toastMessage }}</span>
+    </div>
+    <div
+      v-else-if="isUpdateReady"
+      id="vue-update-toast"
+      class="fixed bottom-6 right-6 z-50 flex items-center gap-4 rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 shadow-[0_20px_50px_rgba(2,6,23,0.9)]"
+    >
+      <span class="text-sm font-semibold text-white">Chappy's got an update — Restart Now</span>
+      <div class="flex gap-2">
+        <button
+          type="button"
+          class="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-600"
+          @click="handleRestartToApply"
+        >
+          Restart Now
+        </button>
+        <button
+          type="button"
+          class="rounded-xl border border-slate-600 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+          aria-label="Dismiss"
+          @click="isUpdateReady = false"
+        >
+          Close
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -622,6 +725,11 @@ const themePreference = ref('system');
 const useSystemBrowserLinks = ref(true);
 const preserveTabMemory = ref(true);
 const openServicesOnLaunch = ref(false);
+const enableAutoUpdate = ref(true);
+const updateCheckStatus = ref(null);
+const isUpdateReady = ref(false);
+const toastMessage = ref(null);
+let toastTimeout = null;
 const systemPrefersDark = ref(true);
 const unreadStateByTabId = ref({});
 
@@ -948,6 +1056,7 @@ const persistConfig = async () => {
       useSystemBrowserLinks: useSystemBrowserLinks.value,
       preserveTabMemory: preserveTabMemory.value,
       openServicesOnLaunch: openServicesOnLaunch.value,
+      enableAutoUpdate: enableAutoUpdate.value,
       tabs: tabs.value.map(serializeTab)
     });
   } catch (error) {
@@ -965,6 +1074,7 @@ const loadConfig = async () => {
     const persisted = await chappyApi.loadConfig();
     themePreference.value = normalizeThemePreference(persisted?.themePreference);
     useSystemBrowserLinks.value = persisted?.useSystemBrowserLinks !== false;
+    enableAutoUpdate.value = persisted?.enableAutoUpdate !== false;
     const shouldOpenServicesOnLaunch = persisted?.openServicesOnLaunch === true;
     preserveTabMemory.value = shouldOpenServicesOnLaunch || persisted?.preserveTabMemory !== false;
     const restoredTabs = [];
@@ -1322,7 +1432,7 @@ watch(preserveTabMemory, (shouldPreserve) => {
   }
 });
 
-watch([tabs, activeTabId, themePreference, useSystemBrowserLinks, preserveTabMemory, openServicesOnLaunch], () => {
+watch([tabs, activeTabId, themePreference, useSystemBrowserLinks, preserveTabMemory, openServicesOnLaunch, enableAutoUpdate], () => {
   void persistConfig();
 }, { deep: true });
 
@@ -1331,6 +1441,44 @@ const handleWebViewNavigationForTab = (tabId, event) => {
     return;
   }
   persistLastUrlForTab(tabId, event?.url);
+};
+
+const showToast = (message) => {
+  if (toastTimeout) clearTimeout(toastTimeout);
+  toastMessage.value = message;
+  toastTimeout = setTimeout(() => {
+    toastMessage.value = null;
+    toastTimeout = null;
+  }, 3000);
+};
+
+const handleCheckForUpdate = async () => {
+  if (!chappyApi?.checkForUpdate) return;
+  updateCheckStatus.value = 'checking';
+  try {
+    const result = await chappyApi.checkForUpdate();
+    if (result?.isReady) {
+      isUpdateReady.value = true;
+      updateCheckStatus.value = 'available';
+    } else if (result?.hasUpdate) {
+      updateCheckStatus.value = 'available';
+    } else if (result?.error) {
+      updateCheckStatus.value = 'error';
+      showToast('Could not check for updates. Try again.');
+    } else {
+      updateCheckStatus.value = null;
+      showToast("You're up to date");
+    }
+  } catch {
+    updateCheckStatus.value = 'error';
+    showToast('Could not check for updates. Try again.');
+  }
+};
+
+const handleRestartToApply = () => {
+  if (chappyApi?.restartToApply) {
+    chappyApi.restartToApply();
+  }
 };
 
 onMounted(() => {
@@ -1342,10 +1490,26 @@ onMounted(() => {
       prefersDarkMediaQuery.addListener(handleSystemThemeChange);
     }
   }
-  void loadConfig();
+  if (chappyApi?.onUpdateReady) {
+    chappyApi.onUpdateReady(() => {
+      isUpdateReady.value = true;
+      updateCheckStatus.value = 'available';
+    });
+  }
+  void loadConfig().then(async () => {
+    const status = await chappyApi?.getUpdateStatus?.();
+    if (status?.isReady) {
+      isUpdateReady.value = true;
+      updateCheckStatus.value = 'available';
+    }
+  });
 });
 
 onBeforeUnmount(() => {
+  if (toastTimeout) {
+    clearTimeout(toastTimeout);
+    toastTimeout = null;
+  }
   if (!prefersDarkMediaQuery) {
     return;
   }
