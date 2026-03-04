@@ -626,7 +626,7 @@
               class="h-full w-full border-0"
               @did-navigate="(event) => handleWebViewNavigationForTab(tab.id, event)"
               @did-navigate-in-page="(event) => handleWebViewNavigationForTab(tab.id, event)"
-              @dom-ready="() => syncUnreadStateFromWebviewTitle(tab.id)"
+              @dom-ready="() => handleWebviewDomReady(tab.id)"
               @page-title-updated="(event) => handleWebviewTitleUpdatedForTab(tab.id, event)"
             ></webview>
           </template>
@@ -643,7 +643,7 @@
               class="h-full w-full border-0"
               @did-navigate="(event) => handleWebViewNavigationForTab(activeTab.id, event)"
               @did-navigate-in-page="(event) => handleWebViewNavigationForTab(activeTab.id, event)"
-              @dom-ready="() => syncUnreadStateFromWebviewTitle(activeTab.id)"
+              @dom-ready="() => handleWebviewDomReady(activeTab.id)"
               @page-title-updated="(event) => handleWebviewTitleUpdatedForTab(activeTab.id, event)"
             ></webview>
             <div v-else class="absolute inset-0 flex items-center justify-center bg-slate-950 text-sm text-slate-400">
@@ -658,6 +658,7 @@
       :tab="editingTab"
       @close="closeSettingsModal"
       @save="handleSaveSettings"
+      @fetch-icon="handleFetchIconFromWebsite"
     />
     <div
       v-if="toastMessage"
@@ -1230,6 +1231,35 @@ const syncUnreadStateFromTitle = (tabId, title) => {
   setUnreadStateForTab(tabId, parseUnreadStateFromTitle(title));
 };
 
+const EXTRACT_ICON_SCRIPT = `(function(){
+  var links = document.querySelectorAll('link[rel*="apple-touch-icon"], link[rel*="shortcut"][rel*="icon"], link[rel="icon"]');
+  var appleTouch = [], shortcut = [], generic = [];
+  for (var i = 0; i < links.length; i++) {
+    var link = links[i];
+    var rel = (link.getAttribute('rel') || '').toLowerCase();
+    var href = link.href;
+    if (!href) continue;
+    var sizes = link.getAttribute('sizes') || '';
+    var m = sizes.match(/(\\d+)\\s*x\\s*(\\d+)/i);
+    var px = m ? Math.min(parseInt(m[1],10), parseInt(m[2],10)) : 0;
+    if (rel.indexOf('apple-touch-icon') !== -1) {
+      appleTouch.push({ url: href, px: px });
+    } else if (rel.indexOf('shortcut') !== -1 && rel.indexOf('icon') !== -1) {
+      shortcut.push({ url: href });
+    } else if (rel === 'icon') {
+      generic.push({ url: href });
+    }
+  }
+  if (appleTouch.length) {
+    appleTouch.sort(function(a,b){ return b.px - a.px; });
+    var r = appleTouch.find(function(c){ return c.px >= 96 && c.px <= 180; }) || appleTouch[0];
+    return r.url;
+  }
+  if (shortcut.length) return shortcut[0].url;
+  if (generic.length) return generic[0].url;
+  try { return new URL('/favicon.ico', window.location.href).toString(); } catch(e){ return null; }
+})()`;
+
 const syncUnreadStateFromWebviewTitle = (tabId) => {
   if (tabId === 'chappy') {
     return;
@@ -1243,6 +1273,30 @@ const syncUnreadStateFromWebviewTitle = (tabId) => {
   } catch (error) {
     // webview might not be ready for title inspection yet
   }
+};
+
+const handleWebviewDomReady = (tabId) => {
+  syncUnreadStateFromWebviewTitle(tabId);
+  const tab = tabs.value.find((t) => t.id === tabId);
+  if (!tab || tab.iconId !== 'custom' || tab.primaryIconPath || !chappyApi?.fetchAndSaveIcon) {
+    return;
+  }
+  const webview = resolveWebviewForTabId(tabId);
+  if (!webview || typeof webview.executeJavaScript !== 'function') {
+    return;
+  }
+  void webview.executeJavaScript(EXTRACT_ICON_SCRIPT).then((iconUrl) => {
+    if (!iconUrl || typeof iconUrl !== 'string') return;
+    chappyApi.fetchAndSaveIcon({ iconUrl, tabId }).then((result) => {
+      if (result?.path) {
+        updateTabById(tabId, (t) => ({
+          ...t,
+          primaryIconPath: result.path,
+          icon: `chappy-icon://local/${result.path}`,
+        }));
+      }
+    }).catch(() => {});
+  }).catch(() => {});
 };
 
 const handleWebviewTitleUpdatedForTab = (tabId, event) => {
@@ -1290,6 +1344,30 @@ const openSettings = (tab) => {
 const closeSettingsModal = () => {
   isSettingsModalOpen.value = false;
   editingTab.value = null;
+};
+
+const handleFetchIconFromWebsite = async () => {
+  const tab = editingTab.value;
+  if (!tab || !tab.url || !chappyApi?.fetchIconFromUrl) {
+    showToast(tab?.url ? 'Icon fetch unavailable' : 'No URL to fetch from');
+    return;
+  }
+  try {
+    const result = await chappyApi.fetchIconFromUrl({ pageUrl: tab.url, tabId: tab.id });
+    if (result?.path) {
+      const updated = {
+        primaryIconPath: result.path,
+        icon: `chappy-icon://local/${result.path}`,
+      };
+      updateTabById(tab.id, (t) => ({ ...t, ...updated }));
+      editingTab.value = { ...editingTab.value, ...updated };
+      showToast('Icon added from website');
+    } else {
+      showToast('No icon found on website');
+    }
+  } catch {
+    showToast('Could not fetch icon from website');
+  }
 };
 
 const handleSaveSettings = (updatedTab) => {
@@ -1380,6 +1458,30 @@ const addTab = () => {
     markTabLoaded(id);
   }
   activeTabId.value = id;
+
+  void (async () => {
+    const hasApi = !!chappyApi?.fetchIconFromUrl;
+    if (!hasApi) {
+      showToast('Icon fetch unavailable');
+      return;
+    }
+    try {
+      const result = await chappyApi.fetchIconFromUrl({ pageUrl: trimmedUrl, tabId: id });
+      if (result?.path) {
+        const updated = {
+          primaryIconPath: result.path,
+          icon: `chappy-icon://local/${result.path}`,
+        };
+        updateTabById(id, (tab) => ({ ...tab, ...updated }));
+        if (editingTab.value?.id === id) {
+          editingTab.value = { ...editingTab.value, ...updated };
+        }
+        showToast('Icon added from website');
+      }
+    } catch (err) {
+      showToast('Could not fetch icon from website');
+    }
+  })();
 };
 
 const moveTab = (index, direction) => {

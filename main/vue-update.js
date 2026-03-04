@@ -50,11 +50,38 @@ function getCurrentHash() {
 }
 
 function getRendererPath() {
-  const indexPath = path.join(RENDERER_DIR, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    return RENDERER_DIR;
+  const builtInPath = path.join(__dirname, '../dist');
+  const userIndexPath = path.join(RENDERER_DIR, 'index.html');
+  const userBuildJson = path.join(RENDERER_DIR, 'vue-build.json');
+  const builtInBuildJson = path.join(builtInPath, 'vue-build.json');
+
+  if (!fs.existsSync(userIndexPath)) {
+    return builtInPath;
   }
-  return path.join(__dirname, '../dist');
+
+  let builtInHash = null;
+  let userHash = null;
+  if (fs.existsSync(builtInBuildJson)) {
+    try {
+      builtInHash = JSON.parse(fs.readFileSync(builtInBuildJson, 'utf8')).hash || null;
+    } catch {
+      /* ignore */
+    }
+  }
+  if (fs.existsSync(userBuildJson)) {
+    try {
+      userHash = JSON.parse(fs.readFileSync(userBuildJson, 'utf8')).hash || null;
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (builtInHash && userHash && builtInHash !== userHash) {
+    fs.rmSync(RENDERER_DIR, { recursive: true, force: true });
+    return builtInPath;
+  }
+
+  return RENDERER_DIR;
 }
 
 function hasValidPendingUpdate() {

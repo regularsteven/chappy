@@ -45,6 +45,14 @@ Mandatory rules:
 6. Open and merge PR: `test` -> `main`.
 7. Mark the job done only after the change is merged to `main` and required checks have passed.
 
+## Build requirements
+
+- **Development**: `npm run dev` — no build needed; runs renderer dev server + Electron.
+- **CI / verification**: `npm run build:renderer` — builds the renderer; main/preload run as-is.
+- **Distribution**: `npm run build:full` — builds renderer and packages the desktop app (DMG/ZIP).
+
+Use `npm run build` when you need the vue-update build; use `npm run build:full` when creating a distributable release.
+
 ## CI and quality gates
 
 - Target `dev` PRs:
