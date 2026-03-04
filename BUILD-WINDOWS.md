@@ -1,37 +1,43 @@
-# Building Chappy on Windows
+# Chappy on Windows
 
-Simple steps to build Chappy on Windows 10 or 11.
+## Simplest: Download and run (no build, no Node.js)
 
-## Prerequisites
+1. Go to [Releases](https://github.com/regularsteven/chappy/releases)
+2. Download **Chappy Setup 0.0.1.exe** (installer) or **Chappy 0.0.1.exe** (portable, no install)
+3. Double-click to run
 
-1. **Node.js** (one-time setup)
-   - Go to [https://nodejs.org](https://nodejs.org)
-   - Download the **LTS** version
-   - Run the installer (accept defaults)
-   - Close and reopen Command Prompt after installing
+That's it. No Node.js, no Command Prompt, no build.
 
-## Build steps
+---
 
-1. **Download the repo**
-   - On GitHub: Code → Download ZIP
-   - Extract the ZIP (e.g. to your Desktop)
+## Building from source
 
-2. **Open Command Prompt**
-   - Press `Win + R`, type `cmd`, press Enter
-   - Or: Start menu → type "Command Prompt" → open it
+You need Node.js first. **Do this before anything else.**
 
-3. **Go to the folder**
-   - Type `cd ` (with a space), then drag the extracted folder into the Command Prompt window, then press Enter
-   - Or type the path manually, e.g. `cd C:\Users\YourName\Desktop\chappy-main`
+### Step 1: Install Node.js (required)
 
-4. **Install and build**
+1. Go to [https://nodejs.org](https://nodejs.org)
+2. Click the **LTS** download (green button)
+3. Run the installer — accept all defaults, click Next through
+4. **Close Command Prompt if it's open** — then open a new one (Node won't work until you do)
+
+### Step 2: Download the repo
+
+- On GitHub: Code → Download ZIP
+- Extract the ZIP (e.g. to your Desktop)
+
+### Step 3: Build
+
+1. Open Command Prompt (Win + R, type `cmd`, Enter)
+2. Go to the folder: type `cd ` (with a space), drag the extracted folder into the window, press Enter
+3. Run:
+   ```
+   build.bat
+   ```
+   Or manually:
    ```
    npm install
    npm run build:windows
    ```
-   The first command may take a few minutes (downloads dependencies).
 
-5. **Find the app**
-   - Open the `release` folder in the project
-   - **Chappy 0.0.1.exe** — double-click to run (no install)
-   - **Chappy Setup 0.0.1.exe** — run to install with Start Menu shortcut
+4. Find the app in the `release` folder
