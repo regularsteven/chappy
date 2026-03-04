@@ -10,14 +10,30 @@ if (!fs.existsSync(RELEASE_DIR)) {
 
 const entries = fs.readdirSync(RELEASE_DIR, { withFileTypes: true });
 const files = entries
-  .filter((entry) => entry.isFile() && (entry.name.endsWith('.dmg') || entry.name.endsWith('.zip')))
+  .filter(
+    (entry) =>
+      entry.isFile() &&
+      (entry.name.endsWith('.dmg') ||
+        entry.name.endsWith('.zip') ||
+        entry.name.endsWith('.exe'))
+  )
   .map((entry) => path.join(RELEASE_DIR, entry.name))
   .sort();
 
 const appDirs = entries
-  .filter((entry) => entry.isDirectory() && entry.name.startsWith('mac'))
-  .map((entry) => path.join(RELEASE_DIR, entry.name, 'Chappy.app'))
-  .filter((candidate) => fs.existsSync(candidate));
+  .filter(
+    (entry) =>
+      entry.isDirectory() &&
+      (entry.name.startsWith('mac') || entry.name.startsWith('win'))
+  )
+  .flatMap((entry) => {
+    const base = path.join(RELEASE_DIR, entry.name);
+    if (entry.name.startsWith('mac')) {
+      const appPath = path.join(base, 'Chappy.app');
+      return fs.existsSync(appPath) ? [appPath] : [];
+    }
+    return [base];
+  });
 
 if (files.length === 0 && appDirs.length === 0) {
   console.error(`❌ No desktop artifacts found in: ${RELEASE_DIR}`);
