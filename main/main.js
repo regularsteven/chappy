@@ -84,7 +84,7 @@ const sanitizeThemePreference = (value) => {
 };
 const launchModes = new Set(['default', 'custom', 'preserve']);
 const externalProtocols = new Set(['http:', 'https:', 'mailto:', 'tel:']);
-const ALLOWED_ICON_MIMES = new Set(['image/svg+xml', 'image/png']);
+const ALLOWED_ICON_MIMES = new Set(['image/svg+xml', 'image/png', 'image/x-icon']);
 
 const sanitizeIconPath = (value) => {
   if (typeof value !== 'string') {
@@ -95,7 +95,7 @@ const sanitizeIconPath = (value) => {
     return '';
   }
   const normalized = path.normalize(trimmed).replace(/^(\.\.(\/|\\|$))+/, '');
-  if (!/^icons[/\\][a-zA-Z0-9_.-]+-(?:primary|secondary)\.(svg|png)$/i.test(normalized.replace(/\\/g, '/'))) {
+  if (!/^icons[/\\][a-zA-Z0-9_.-]+-(?:primary|secondary)\.(svg|png|ico)$/i.test(normalized.replace(/\\/g, '/'))) {
     return '';
   }
   const fullPath = path.join(CHAPPY_DIR, normalized);
@@ -308,6 +308,172 @@ ipcMain.handle('chappy:resolve-icon-url', (_event, { path: iconPath }) => {
     return '';
   }
   return `chappy-icon://local/${sanitized}`;
+});
+
+const pickIconUrlFromHtml = (html, baseUrl) => {
+  const base = new URL(baseUrl);
+  const resolve = (href) => {
+    if (!href || typeof href !== 'string') return null;
+    try {
+      return new URL(href, base).toString();
+    } catch {
+      return null;
+    }
+  };
+  const appleTouchIcons = [];
+  const shortcutIcons = [];
+  const genericIcons = [];
+  const linkRe = /<link\s+([^>]+)\s*\/?>/gi;
+  let m;
+  while ((m = linkRe.exec(html)) !== null) {
+    const attrs = m[1];
+    const relMatch = attrs.match(/\brel\s*=\s*["']([^"']+)["']/i);
+    const hrefMatch = attrs.match(/\bhref\s*=\s*["']([^"']+)["']/i);
+    const sizesMatch = attrs.match(/\bsizes\s*=\s*["']([^"']+)["']/i);
+    if (!relMatch || !hrefMatch) continue;
+    const rel = relMatch[1].toLowerCase().trim();
+    const href = hrefMatch[1].trim();
+    const sizes = sizesMatch ? sizesMatch[1].trim() : '';
+    if (rel.includes('apple-touch-icon')) {
+      const url = resolve(href);
+      if (url) {
+        const sizeMatch = sizes.match(/(\d+)\s*x\s*(\d+)/i);
+        const px = sizeMatch ? Math.min(parseInt(sizeMatch[1], 10), parseInt(sizeMatch[2], 10)) : 0;
+        appleTouchIcons.push({ url, px });
+      }
+    } else if (rel.includes('shortcut') && rel.includes('icon')) {
+      const url = resolve(href);
+      if (url) shortcutIcons.push({ url });
+    } else if (rel === 'icon') {
+      const url = resolve(href);
+      if (url) genericIcons.push({ url });
+    }
+  }
+  if (appleTouchIcons.length > 0) {
+    appleTouchIcons.sort((a, b) => b.px - a.px);
+    const reasonable = appleTouchIcons.find((c) => c.px >= 96 && c.px <= 180) || appleTouchIcons[0];
+    return reasonable.url;
+  }
+  if (shortcutIcons.length > 0) return shortcutIcons[0].url;
+  if (genericIcons.length > 0) return genericIcons[0].url;
+  return resolve('/favicon.ico');
+};
+
+ipcMain.handle('chappy:fetch-icon-from-url', async (_event, { pageUrl, tabId }) => {
+  if (!pageUrl || !tabId || !isValidHttpsUrl(pageUrl)) return null;
+  const safeTabId = sanitizeToken(tabId, 'tab');
+  let html;
+  let finalPageUrl = pageUrl;
+  try {
+    const res = await net.fetch(pageUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+      }
+    });
+    if (!res.ok) return null;
+    finalPageUrl = res.url || pageUrl;
+    html = await res.text();
+  } catch {
+    return null;
+  }
+  const iconUrl = pickIconUrlFromHtml(html, finalPageUrl);
+  if (!iconUrl) return null;
+  const result = await saveIconFromUrl(iconUrl, safeTabId, tabId);
+  return result;
+});
+
+const saveIconFromUrl = async (iconUrl, safeTabId, tabId) => {
+  let iconRes;
+  try {
+    iconRes = await net.fetch(iconUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'image/*,*/*;q=0.8'
+      }
+    });
+    if (!iconRes.ok) return null;
+  } catch {
+    return null;
+  }
+  const contentType = (iconRes.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const buffer = Buffer.from(await iconRes.arrayBuffer());
+  if (buffer.length === 0) return null;
+  let ext = 'png';
+  let mimeType = 'image/png';
+  if (contentType.includes('svg') || iconUrl.toLowerCase().endsWith('.svg')) {
+    ext = 'svg';
+    mimeType = 'image/svg+xml';
+  } else if (contentType.includes('x-icon') || contentType.includes('ico') || iconUrl.toLowerCase().endsWith('.ico')) {
+    ext = 'ico';
+    mimeType = 'image/x-icon';
+  }
+  if (!ALLOWED_ICON_MIMES.has(mimeType)) return null;
+  const filename = `${safeTabId}-primary.${ext}`;
+  const relativePath = `icons/${filename}`;
+  const fullPath = path.join(CHAPPY_DIR, relativePath);
+  const existingTabs = configState.tabs || [];
+  const existingTab = existingTabs.find((t) => t.id === tabId);
+  if (existingTab?.primaryIconPath) {
+    const oldFullPath = path.join(CHAPPY_DIR, existingTab.primaryIconPath);
+    if (fs.existsSync(oldFullPath)) fs.unlinkSync(oldFullPath);
+  }
+  fs.mkdirSync(ICONS_DIR, { recursive: true });
+  fs.writeFileSync(fullPath, buffer);
+  return { path: relativePath.replace(/\\/g, '/') };
+};
+
+ipcMain.handle('chappy:fetch-and-save-icon', async (_event, { iconUrl, tabId }) => {
+  if (!iconUrl || !tabId || !isValidHttpsUrl(iconUrl)) {
+    return null;
+  }
+  const safeTabId = sanitizeToken(tabId, 'tab');
+
+  let iconRes;
+  try {
+    iconRes = await net.fetch(iconUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        Accept: 'image/*,*/*;q=0.8'
+      }
+    });
+    if (!iconRes.ok) return null;
+  } catch {
+    return null;
+  }
+
+  const contentType = (iconRes.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const buffer = Buffer.from(await iconRes.arrayBuffer());
+  if (buffer.length === 0) return null;
+
+  let ext = 'png';
+  let mimeType = 'image/png';
+  if (contentType.includes('svg') || iconUrl.toLowerCase().endsWith('.svg')) {
+    ext = 'svg';
+    mimeType = 'image/svg+xml';
+  } else if (contentType.includes('x-icon') || contentType.includes('ico') || iconUrl.toLowerCase().endsWith('.ico')) {
+    ext = 'ico';
+    mimeType = 'image/x-icon';
+  }
+
+  if (!ALLOWED_ICON_MIMES.has(mimeType)) return null;
+
+  const filename = `${safeTabId}-primary.${ext}`;
+  const relativePath = `icons/${filename}`;
+  const fullPath = path.join(CHAPPY_DIR, relativePath);
+
+  const existingTabs = configState.tabs || [];
+  const existingTab = existingTabs.find((t) => t.id === tabId);
+  if (existingTab?.primaryIconPath) {
+    const oldFullPath = path.join(CHAPPY_DIR, existingTab.primaryIconPath);
+    if (fs.existsSync(oldFullPath)) {
+      fs.unlinkSync(oldFullPath);
+    }
+  }
+
+  fs.mkdirSync(ICONS_DIR, { recursive: true });
+  fs.writeFileSync(fullPath, buffer);
+  return { path: relativePath.replace(/\\/g, '/') };
 });
 
 ipcMain.handle('chappy:check-for-update', async () => {

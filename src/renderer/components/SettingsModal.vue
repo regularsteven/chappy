@@ -15,13 +15,20 @@
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-stretch">
               <div class="flex flex-col">
                 <p class="mb-1.5 text-xs font-medium text-slate-400">Primary</p>
-                <div v-if="isCustomTab" class="flex-1">
+                <div v-if="isCustomTab" class="flex-1 space-y-2">
                   <IconUpload
                     :model-value="primaryIconPath"
                     :tab-id="tab.id"
                     type="primary"
                     @update:model-value="primaryIconPath = $event"
                   />
+                  <button
+                    type="button"
+                    class="text-xs text-sky-400 hover:text-sky-300 underline"
+                    @click="$emit('fetch-icon')"
+                  >
+                    Fetch icon from website
+                  </button>
                 </div>
                 <div
                   v-else
@@ -106,7 +113,7 @@
 </template>
 
 <script setup>
-import { ref, toRefs, computed } from 'vue';
+import { ref, toRefs, computed, watch } from 'vue';
 import IconUpload from './IconUpload.vue';
 
 const props = defineProps({
@@ -116,7 +123,7 @@ const props = defineProps({
   }
 });
 
-const emit = defineEmits(['close', 'save']);
+const emit = defineEmits(['close', 'save', 'fetch-icon']);
 
 const { tab } = toRefs(props);
 const isCustomTab = computed(() => tab.value.iconId === 'custom');
@@ -126,6 +133,12 @@ const customLaunchUrl = ref(tab.value.customLaunchUrl || '');
 const customUrlError = ref('');
 const primaryIconPath = ref(tab.value.primaryIconPath || '');
 const secondaryIconPath = ref(tab.value.secondaryIconPath || '');
+
+watch(
+  () => tab.value.primaryIconPath,
+  (val) => { primaryIconPath.value = val || ''; },
+  { immediate: false }
+);
 
 const isValidHttpsUrl = (value) => {
   if (typeof value !== 'string') {

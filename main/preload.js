@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld('chappy', {
   saveIcon: (opts) => ipcRenderer.invoke('chappy:save-icon', opts),
   deleteIcon: (opts) => ipcRenderer.invoke('chappy:delete-icon', opts),
   resolveIconUrl: (opts) => ipcRenderer.invoke('chappy:resolve-icon-url', opts),
+  fetchAndSaveIcon: (opts) => ipcRenderer.invoke('chappy:fetch-and-save-icon', opts),
+  fetchIconFromUrl: (opts) => ipcRenderer.invoke('chappy:fetch-icon-from-url', opts),
   checkForUpdate: () => ipcRenderer.invoke('chappy:check-for-update'),
   getUpdateStatus: () => ipcRenderer.invoke('chappy:get-update-status'),
   restartToApply: () => ipcRenderer.invoke('chappy:restart-to-apply'),
