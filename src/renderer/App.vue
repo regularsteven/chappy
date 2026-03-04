@@ -284,7 +284,7 @@
 
           <div v-else-if="chappyWorkspaceTab === 'configure'" id="configure-view" class="space-y-6">
             <div id="service-catalog-panel" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
-              <div class="flex items-start justify-between gap-4">
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <p class="text-xs uppercase tracking-widest text-slate-500">Available services</p>
                   <h2 class="text-lg font-semibold text-white">Tap to add</h2>
@@ -292,6 +292,26 @@
                     The grid below shows curated chat and productivity services — add as many variations as you
                     need. Each addition keeps its own session partition.
                   </p>
+                </div>
+                <div id="quick-add-section" class="flex shrink-0 flex-col gap-1.5 sm:flex-row sm:items-center">
+                  <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">Quick Add</span>
+                  <div class="flex flex-col gap-1.5 sm:flex-row sm:items-center">
+                    <input
+                      v-model="quickAddUrl"
+                      type="text"
+                      placeholder="discord.com or https://..."
+                      class="min-w-[12rem] rounded-xl border border-slate-800 bg-slate-950 px-3 py-1.5 text-sm text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                      @keydown.enter.prevent="quickAdd"
+                    />
+                    <button
+                      type="button"
+                      class="quick-add-button shrink-0 rounded-xl bg-gradient-to-r from-sky-500 to-violet-500 px-3 py-1.5 text-xs font-semibold uppercase tracking-widest transition hover:opacity-90"
+                      @click="quickAdd"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <p v-if="quickAddError" class="text-rose-400 text-xs">{{ quickAddError }}</p>
                 </div>
               </div>
               <div id="available-services-grid" class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -363,7 +383,7 @@
                   <input
                     v-model="newTab.url"
                     type="url"
-                    placeholder="https://discord.com/app"
+                    placeholder="discord.com or https://..."
                     class="w-full rounded-2xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white focus:border-sky-500 focus:outline-none"
                   />
                   <p v-if="urlError" class="text-rose-400 text-xs">{{ urlError }}</p>
@@ -788,6 +808,63 @@ const normalizeHttpsUrl = (value) => {
   return isValidHttpsUrl(trimmed) ? trimmed : '';
 };
 
+/** Ensures URL has https:// if no protocol; returns normalized URL or empty string. */
+const ensureHttpsUrl = (value) => {
+  if (typeof value !== 'string') {
+    return '';
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+  try {
+    const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    const parsed = new URL(withProtocol);
+    return parsed.protocol === 'https:' ? parsed.href : '';
+  } catch (error) {
+    return '';
+  }
+};
+
+/** Infers a display name from URL by stripping protocol. */
+const inferNameFromUrl = (url) => {
+  if (typeof url !== 'string') {
+    return '';
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./i, '') || parsed.host;
+  } catch (error) {
+    return url.replace(/^https?:\/\//i, '').replace(/^www\./i, '').split('/')[0] || 'Custom';
+  }
+};
+
+/** Extracts hostname for domain matching (lowercase, no www). */
+const getHostnameForMatch = (url) => {
+  if (typeof url !== 'string') {
+    return '';
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.toLowerCase().replace(/^www\./, '');
+  } catch (error) {
+    return '';
+  }
+};
+
+/** Returns the available service whose URL hostname matches the given URL, or null. */
+const findServiceByUrl = (url) => {
+  const normalized = ensureHttpsUrl(url);
+  if (!normalized) {
+    return null;
+  }
+  const host = getHostnameForMatch(normalized);
+  if (!host) {
+    return null;
+  }
+  return availableServices.find((s) => getHostnameForMatch(s.url) === host) ?? null;
+};
+
 const launchModeOptions = ['default', 'custom', 'preserve'];
 const isLaunchMode = (value) => launchModeOptions.includes(value);
 
@@ -1168,6 +1245,8 @@ const newTab = reactive({
   url: ''
 });
 
+const quickAddUrl = ref('');
+const quickAddError = ref('');
 const titleError = ref('');
 const urlError = ref('');
 
@@ -1392,6 +1471,27 @@ const handleSaveSettings = (updatedTab) => {
   closeSettingsModal();
 };
 
+const quickAdd = () => {
+  quickAddError.value = '';
+  const trimmed = quickAddUrl.value.trim();
+  if (!trimmed) {
+    quickAddError.value = 'Enter a URL.';
+    return;
+  }
+  const normalizedUrl = ensureHttpsUrl(trimmed);
+  if (!normalizedUrl) {
+    quickAddError.value = 'Enter a valid URL (e.g. discord.com or https://example.com).';
+    return;
+  }
+  const matchedService = findServiceByUrl(normalizedUrl);
+  if (matchedService) {
+    addService(matchedService);
+  } else {
+    addTabFromUrl(normalizedUrl, inferNameFromUrl(normalizedUrl));
+  }
+  quickAddUrl.value = '';
+};
+
 const addService = (service) => {
   const id = ensureUniqueTabId(generateTabId(service.id));
   const partition = ensureUniquePartition(generatePartitionKey(service.id));
@@ -1416,6 +1516,56 @@ const addService = (service) => {
   activeTabId.value = id;
 };
 
+const addTabFromUrl = (url, title) => {
+  const id = ensureUniqueTabId(title || 'custom');
+  const partition = ensureUniquePartition(generatePartitionKey(title || 'custom'));
+  const color = accentColors[tabs.value.length % accentColors.length];
+
+  tabs.value = [
+    ...tabs.value,
+    {
+      id,
+      title: title || inferNameFromUrl(url),
+      url,
+      color,
+      iconId: 'custom',
+      icon: resolveIconById('custom'),
+      partition,
+      customLaunchUrl: '',
+      launchMode: 'default',
+      lastUrl: '',
+    }
+  ];
+
+  if (preserveTabMemory.value) {
+    markTabLoaded(id);
+  }
+  activeTabId.value = id;
+
+  void (async () => {
+    const hasApi = !!chappyApi?.fetchIconFromUrl;
+    if (!hasApi) {
+      return;
+    }
+    try {
+      const result = await chappyApi.fetchIconFromUrl({ pageUrl: url, tabId: id });
+      if (result?.path) {
+        const updated = {
+          primaryIconPath: result.path,
+          icon: `chappy-icon://local/${result.path}`,
+        };
+        updateTabById(id, (tab) => ({ ...tab, ...updated }));
+        if (editingTab.value?.id === id) {
+          editingTab.value = { ...editingTab.value, ...updated };
+        }
+        showToast('Icon added from website');
+      }
+    } catch (err) {
+      showToast('Could not fetch icon from website');
+    }
+  })();
+};
+
 const addTab = () => {
   titleError.value = '';
   urlError.value = '';
@@ -1426,9 +1576,18 @@ const addTab = () => {
     return;
   }
 
-  const trimmedUrl = newTab.url.trim();
-  if (!isValidHttpsUrl(trimmedUrl)) {
-    urlError.value = 'A valid https:// URL pointing to the client is required.';
+  const rawUrl = newTab.url.trim();
+  const trimmedUrl = ensureHttpsUrl(rawUrl);
+  if (!trimmedUrl) {
+    urlError.value = 'A valid URL is required (e.g. discord.com or https://example.com).';
+    return;
+  }
+
+  const matchedService = findServiceByUrl(trimmedUrl);
+  if (matchedService) {
+    newTab.title = '';
+    newTab.url = '';
+    addService(matchedService);
     return;
   }
 
