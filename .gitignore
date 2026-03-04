@@ -3,7 +3,6 @@ dist/
 artifacts/
 release/
 build-info.json
-resources/chappy-logo.png
 resources/chappy-logo.icns
 .vscode/
 .DS_Store
