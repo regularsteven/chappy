@@ -42,8 +42,9 @@ Mandatory rules:
 3. Open and merge PR: `feature/*` -> `dev` (sanity gate).
 4. Open and merge PR: `dev` -> `test`.
 5. Run/confirm exhaustive verification on `test` (minimum: `npm test` + `npm run build:renderer`).
-6. Open and merge PR: `test` -> `main`.
-7. Mark the job done only after the change is merged to `main` and required checks have passed.
+6. **Wait for `release-test` workflow to pass on `test`** before merging to `main`. This validates Mac and Windows release builds.
+7. Open and merge PR: `test` -> `main`.
+8. Mark the job done only after the change is merged to `main` and required checks have passed.
 
 ## Build requirements
 
@@ -64,6 +65,7 @@ Use `npm run build` when you need the vue-update build; use `npm run build:full`
   - must come from `test`
   - must pass `npm test`
   - must pass `npm run build:renderer`
+  - must have `release-test` passed on `test` (validates release builds before promotion)
 
 ## Merge policy
 
@@ -76,6 +78,17 @@ Use `npm run build` when you need the vue-update build; use `npm run build:full`
 - Use annotated tags in the form `vX.Y.Z`.
 - Push the tag to trigger release workflow.
 - Release workflow publishes artifacts from `release/`.
+
+### Release validation (mandatory before tagging)
+
+**Never tag a release until the release build has been validated on `test`.**
+
+1. The `release-test` workflow runs on every push to `test`. It builds both Mac and Windows artifacts (same steps as the real release).
+2. **Before tagging**: Ensure the `release-test` workflow has passed on `test` for the commit you are about to tag. If it failed, fix the failure and re-promote through the branch chain before tagging.
+3. **Tag only after**:
+   - Changes are merged to `main`
+   - The same code path passed `release-test` when it was on `test` (i.e. the test->main PR merged after release-test succeeded)
+4. **Release workflow behavior**: The release workflow builds Mac and Windows in parallel, uploads artifacts, and publishes to GitHub Releases **only after both succeed**. If either build fails, no release is created (no partial releases).
 
 ## Agent PR checklist
 
