@@ -53,6 +53,9 @@ jobs:
   release-windows:
     name: release-windows
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@v4
