@@ -20,6 +20,7 @@
     "test:services": "node scripts/check-service-loads.mjs",
     "test:fetch-icon": "node scripts/test-fetch-icon.mjs",
     "test:icon-full-flow": "node scripts/test-icon-full-flow.mjs",
+    "release-notes": "node scripts/collate-release-notes.js",
     "postinstall": "npm run prepare:icons && node scripts/brand-electron.js"
   },
   "keywords": [],
