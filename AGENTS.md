@@ -79,6 +79,15 @@ Use `npm run build` when you need the vue-update build; use `npm run build:full`
 - Push the tag to trigger release workflow.
 - Release workflow publishes artifacts from `release/`.
 
+### Version strategy (mandatory)
+
+See [docs/VERSIONING.md](docs/VERSIONING.md) for the full methodology.
+
+- **Tag must match package.json:** `vX.Y.Z` must equal `package.json` version at the tagged commit. Bump `package.json` in a commit *before* tagging.
+- **Feature docs:** Each PR must have a feature doc in `docs/features/`, classified per the methodology (type, severity, version bump).
+- **Before tagging:** Collate features merged since last release; determine version from highest bump; bump `package.json`; then tag.
+- **Release notes:** Populate the GitHub Release body from collated features (use `node scripts/collate-release-notes.js X.Y.Z`).
+
 ### Release validation (mandatory before tagging)
 
 **Never tag a release until the release build has been validated on `test`.**
@@ -97,4 +106,5 @@ Use `npm run build` when you need the vue-update build; use `npm run build:full`
 - [ ] Target branch is correct for this promotion step
 - [ ] Required CI checks passed for target branch
 - [ ] README/AGENTS/docs updated if workflow or behavior changed
+- [ ] Feature doc created in `docs/features/` (see [docs/features/TEMPLATE.md](docs/features/TEMPLATE.md))
 - [ ] Release notes/changelog prepared when version changed
