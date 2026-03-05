@@ -3,7 +3,7 @@
 ## Simplest: Download and run (no build, no Node.js)
 
 1. Go to [Releases](https://github.com/regularsteven/chappy/releases)
-2. Download **Chappy Setup 0.0.1.exe** (installer) or **Chappy 0.0.1.exe** (portable, no install)
+2. Download **Chappy Setup 0.0.2.exe** (installer) or **Chappy 0.0.2.exe** (portable, no install)
 3. Double-click to run
 
 That's it. No Node.js, no Command Prompt, no build.
