@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('chappy', {
   fetchIconFromUrl: (opts) => ipcRenderer.invoke('chappy:fetch-icon-from-url', opts),
   checkForUpdate: () => ipcRenderer.invoke('chappy:check-for-update'),
   getUpdateStatus: () => ipcRenderer.invoke('chappy:get-update-status'),
+  setBadgeCount: (count) => ipcRenderer.invoke('chappy:set-badge-count', count),
   restartToApply: () => ipcRenderer.invoke('chappy:restart-to-apply'),
   onUpdateReady: (callback) => {
     ipcRenderer.on('vue-update-ready', () => callback());
