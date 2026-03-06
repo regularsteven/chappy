@@ -31,7 +31,7 @@ Add these repository secrets:
 
 - `MACOS_CERTIFICATE_P12_BASE64`: base64-encoded Developer ID Application `.p12` file
 - `MACOS_CERTIFICATE_PASSWORD`: password used when exporting the `.p12`
-- `MACOS_CERTIFICATE_NAME`: certificate common name, for example `Developer ID Application: Your Name (TEAMID)`
+- `MACOS_CERTIFICATE_NAME` (optional): certificate common name, for example `Developer ID Application: Your Name (TEAMID)`
 - `APPLE_API_KEY_P8`: raw `.p8` content for App Store Connect API key
 - `APPLE_API_KEY_ID`: App Store Connect API key ID
 - `APPLE_API_ISSUER_ID`: App Store Connect issuer ID
