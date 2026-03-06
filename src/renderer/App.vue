@@ -966,6 +966,15 @@ const setUnreadStateForTab = (tabId, nextState) => {
 
 const tabHasUnread = (tabId) => unreadStateByTabId.value[tabId]?.hasUnread === true;
 const tabUnreadCount = (tabId) => normalizeUnreadCount(unreadStateByTabId.value[tabId]?.count);
+const totalUnreadBadgeCount = computed(() =>
+  Object.values(unreadStateByTabId.value).reduce((total, state) => {
+    if (state?.hasUnread !== true) {
+      return total;
+    }
+    const normalizedCount = normalizeUnreadCount(state.count);
+    return total + (normalizedCount ?? 1);
+  }, 0)
+);
 const formatUnreadCount = (count) => {
   const normalizedCount = normalizeUnreadCount(count);
   if (normalizedCount === null) {
@@ -1308,6 +1317,13 @@ const syncUnreadStateFromTitle = (tabId, title) => {
     return;
   }
   setUnreadStateForTab(tabId, parseUnreadStateFromTitle(title));
+};
+
+const syncAppBadgeCount = () => {
+  if (typeof chappyApi?.setBadgeCount !== 'function') {
+    return;
+  }
+  void chappyApi.setBadgeCount(totalUnreadBadgeCount.value).catch(() => {});
 };
 
 const EXTRACT_ICON_SCRIPT = `(function(){
@@ -1676,6 +1692,10 @@ watch(
   { immediate: true }
 );
 
+watch(totalUnreadBadgeCount, () => {
+  syncAppBadgeCount();
+}, { immediate: true });
+
 watch([activeTabId, preserveTabMemory], ([tabId, shouldPreserve]) => {
   if (shouldPreserve) {
     markTabLoaded(tabId);
@@ -1786,6 +1806,9 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (typeof chappyApi?.setBadgeCount === 'function') {
+    void chappyApi.setBadgeCount(0).catch(() => {});
+  }
   if (toastTimeout) {
     clearTimeout(toastTimeout);
     toastTimeout = null;
