@@ -63,7 +63,6 @@
       "icon": "resources/chappy-logo.icns",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "identity": "Developer ID Application",
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
       "target": [
