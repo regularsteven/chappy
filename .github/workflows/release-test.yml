@@ -63,14 +63,20 @@ jobs:
       - name: Build desktop release artifacts
         run: npm run build:desktop:ci
 
-      - name: Notarize and staple DMG
+      - name: Notarize and staple macOS artifacts
         run: |
+          APP_PATH="$(find release -maxdepth 2 -type d -name 'Chappy.app' | head -n 1)"
           DMG_PATH="$(ls -t release/*.dmg | head -n 1)"
+          if [[ -z "${APP_PATH}" ]]; then
+            echo "No Chappy.app bundle found in release/."
+            exit 1
+          fi
           if [[ -z "${DMG_PATH}" ]]; then
             echo "No DMG artifact found in release/."
             exit 1
           fi
           xcrun notarytool submit "${DMG_PATH}" --key "${APPLE_API_KEY_PATH}" --key-id "${APPLE_API_KEY_ID}" --issuer "${APPLE_API_ISSUER}" --wait
+          xcrun stapler staple "${APP_PATH}"
           xcrun stapler staple "${DMG_PATH}"
 
       - name: Verify macOS release artifact
