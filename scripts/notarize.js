@@ -3,7 +3,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { notarize } = require('@electron/notarize');
 
-const REQUIRED_ENV = ['APPLE_API_KEY_ID', 'APPLE_API_ISSUER'];
+const REQUIRED_ENV = ['APPLE_API_KEY_ID'];
 
 function resolveApiKeyPath() {
   const fromPath = process.env.APPLE_API_KEY_PATH;
@@ -37,7 +37,7 @@ exports.default = async function notarizeMac(context) {
   if (!apiKey.path || missingRequired.length > 0) {
     if (requireSigning) {
       throw new Error(
-        `Missing notarization credentials. Required env vars: APPLE_API_KEY_PATH or APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER. Missing: ${missingRequired.join(', ')}`
+        `Missing notarization credentials. Required env vars: APPLE_API_KEY_PATH or APPLE_API_KEY, APPLE_API_KEY_ID. Missing: ${missingRequired.join(', ')}`
       );
     }
 
@@ -51,14 +51,19 @@ exports.default = async function notarizeMac(context) {
 
   try {
     console.log(`Notarizing macOS app at: ${appPath}`);
-    await notarize({
+    const options = {
       appPath,
       tool: 'notarytool',
       appleApiKey: apiKey.path,
       appleApiKeyId: process.env.APPLE_API_KEY_ID,
-      appleApiIssuer: process.env.APPLE_API_ISSUER,
       teamId: process.env.APPLE_TEAM_ID || undefined
-    });
+    };
+
+    if (process.env.APPLE_API_ISSUER) {
+      options.appleApiIssuer = process.env.APPLE_API_ISSUER;
+    }
+
+    await notarize(options);
     console.log('Notarization finished.');
   } finally {
     if (apiKey.temporary) {

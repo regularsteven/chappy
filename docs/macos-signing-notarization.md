@@ -34,7 +34,7 @@ Add these repository secrets:
 - `MACOS_CERTIFICATE_NAME` (optional): certificate common name, for example `Developer ID Application: Your Name (TEAMID)`
 - `APPLE_API_KEY_P8`: raw `.p8` content for App Store Connect API key
 - `APPLE_API_KEY_ID`: App Store Connect API key ID
-- `APPLE_API_ISSUER_ID`: App Store Connect issuer ID
+- `APPLE_API_ISSUER_ID` (optional for individual keys): App Store Connect issuer ID
 - `APPLE_TEAM_ID`: Apple Developer Team ID
 
 Notes:
