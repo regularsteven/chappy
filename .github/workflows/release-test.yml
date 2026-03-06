@@ -21,7 +21,6 @@ jobs:
       APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_P8 || secrets.APPLE_API_KEY }}
       APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID || secrets.APPLE_API_ISSUER }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       CHAPPY_REQUIRE_MAC_SIGNING: "true"
     steps:
       - name: Checkout

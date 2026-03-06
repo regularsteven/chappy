@@ -55,8 +55,7 @@ exports.default = async function notarizeMac(context) {
       appPath,
       tool: 'notarytool',
       appleApiKey: apiKey.path,
-      appleApiKeyId: process.env.APPLE_API_KEY_ID,
-      teamId: process.env.APPLE_TEAM_ID || undefined
+      appleApiKeyId: process.env.APPLE_API_KEY_ID
     };
 
     if (process.env.APPLE_API_ISSUER) {

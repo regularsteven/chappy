@@ -35,7 +35,6 @@ Add these repository secrets:
 - `APPLE_API_KEY_P8`: raw `.p8` content for App Store Connect API key
 - `APPLE_API_KEY_ID`: App Store Connect API key ID
 - `APPLE_API_ISSUER_ID` (optional for individual keys): App Store Connect issuer ID
-- `APPLE_TEAM_ID`: Apple Developer Team ID
 
 Notes:
 - Never commit `.p12`, `.p8`, passwords, or key values to git.
