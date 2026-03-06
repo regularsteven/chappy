@@ -1,6 +1,6 @@
 const fs = require('node:fs');
 const os = require('node:os');
-const { app, BrowserWindow, ipcMain, net, protocol, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, nativeImage, net, protocol, shell } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('node:url');
 const vueUpdate = require('./vue-update.js');
@@ -18,6 +18,76 @@ const CHAPPY_DIR = path.join(os.homedir(), '.chappy');
 const CONFIG_PATH = path.join(CHAPPY_DIR, 'config.json');
 const ICONS_DIR = path.join(CHAPPY_DIR, 'icons');
 const APP_ICON_PNG = path.join(__dirname, '../resources/chappy-logo.png');
+const BADGE_MAX_DISPLAY = 9;
+let currentAppBadgeCount = 0;
+const windowsOverlayIconCache = new Map();
+
+const normalizeBadgeCount = (value) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+};
+
+const formatBadgeLabel = (count) => (count > BADGE_MAX_DISPLAY ? `${BADGE_MAX_DISPLAY}+` : String(count));
+
+const escapeXml = (value) =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+const createWindowsOverlayIcon = (label) => {
+  const fontSize = label.length > 1 ? 14 : 16;
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+      <circle cx="16" cy="16" r="15" fill="#ef4444" />
+      <text x="16" y="21" text-anchor="middle" fill="#ffffff" font-size="${fontSize}" font-weight="700" font-family="Segoe UI, Arial, sans-serif">${escapeXml(label)}</text>
+    </svg>
+  `;
+  return nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`);
+};
+
+const setWindowsOverlayBadge = (count) => {
+  if (process.platform !== 'win32') {
+    return;
+  }
+  const windows = BrowserWindow.getAllWindows();
+  if (windows.length === 0) {
+    return;
+  }
+  if (count === 0) {
+    windows.forEach((window) => {
+      window.setOverlayIcon(null, '');
+    });
+    return;
+  }
+
+  const label = formatBadgeLabel(count);
+  let overlayIcon = windowsOverlayIconCache.get(label);
+  if (!overlayIcon) {
+    overlayIcon = createWindowsOverlayIcon(label);
+    windowsOverlayIconCache.set(label, overlayIcon);
+  }
+  const description = `${label} unread notifications`;
+  windows.forEach((window) => {
+    window.setOverlayIcon(overlayIcon, description);
+  });
+};
+
+const setAppBadgeCount = (value) => {
+  const count = normalizeBadgeCount(value);
+  const numericBadgeCount = Math.min(count, BADGE_MAX_DISPLAY);
+  currentAppBadgeCount = count;
+  if (typeof app.setBadgeCount === 'function') {
+    app.setBadgeCount(numericBadgeCount);
+  }
+  if (process.platform === 'darwin' && app.dock?.setBadge) {
+    app.dock.setBadge(count > 0 ? formatBadgeLabel(count) : '');
+  }
+  setWindowsOverlayBadge(count);
+  return count;
+};
 
 const resolveAppIcon = () => (fs.existsSync(APP_ICON_PNG) ? APP_ICON_PNG : null);
 
@@ -493,6 +563,8 @@ ipcMain.handle('chappy:restart-to-apply', () => {
   app.quit();
 });
 
+ipcMain.handle('chappy:set-badge-count', (_event, count) => setAppBadgeCount(count));
+
 app.on('web-contents-created', (_event, contents) => {
   if (typeof contents.setWindowOpenHandler !== 'function') {
     return;
@@ -538,6 +610,8 @@ const createMainWindow = () => {
     const rendererPath = vueUpdate.getRendererPath();
     browserWindow.loadFile(path.join(rendererPath, 'index.html'));
   }
+
+  setWindowsOverlayBadge(currentAppBadgeCount);
 };
 
 app.whenReady().then(() => {
@@ -566,13 +640,16 @@ app.whenReady().then(() => {
   if (process.platform === 'darwin' && appIcon && app.dock?.setIcon) {
     app.dock.setIcon(appIcon);
   }
+  setAppBadgeCount(0);
   createMainWindow();
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  app.quit();
+});
+
+app.on('before-quit', () => {
+  setAppBadgeCount(0);
 });
 
 app.on('activate', () => {
