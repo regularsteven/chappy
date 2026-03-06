@@ -40,6 +40,7 @@ Add these repository secrets:
 Notes:
 - Never commit `.p12`, `.p8`, passwords, or key values to git.
 - Keep all secret values in GitHub Actions secrets only.
+- Workflow also accepts legacy secret names (`CSC_LINK`, `CSC_KEY_PASSWORD`, `CSC_NAME`, `APPLE_API_KEY`, `APPLE_API_ISSUER`) as fallback.
 
 ## Workflow Behavior
 
