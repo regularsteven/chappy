@@ -68,6 +68,12 @@ jobs:
           chmod 600 "${KEY_PATH}"
           echo "APPLE_API_KEY_PATH=${KEY_PATH}" >> "${GITHUB_ENV}"
 
+      - name: Normalize certificate name
+        if: ${{ env.CSC_NAME != '' }}
+        run: |
+          SANITIZED_NAME="${CSC_NAME#Developer ID Application: }"
+          echo "CSC_NAME=${SANITIZED_NAME}" >> "${GITHUB_ENV}"
+
       - name: Build desktop release artifacts
         run: npm run build:desktop:ci
 
