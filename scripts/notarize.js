@@ -5,6 +5,11 @@ const { notarize } = require('@electron/notarize');
 
 const REQUIRED_ENV = ['APPLE_API_KEY_ID'];
 
+function isInvalidNotarytoolOptionError(error) {
+  const details = [error?.message, error?.stack].filter(Boolean).join('\n');
+  return /Invalid option:/i.test(details);
+}
+
 function resolveApiKeyPath() {
   const fromPath = process.env.APPLE_API_KEY_PATH;
   if (fromPath) {
@@ -51,18 +56,30 @@ exports.default = async function notarizeMac(context) {
 
   try {
     console.log(`Notarizing macOS app at: ${appPath}`);
-    const options = {
-      appPath,
-      tool: 'notarytool',
-      appleApiKey: apiKey.path,
-      appleApiKeyId: process.env.APPLE_API_KEY_ID
+    const runNotarize = async (includeIssuer) => {
+      const options = {
+        appPath,
+        tool: 'notarytool',
+        appleApiKey: apiKey.path,
+        appleApiKeyId: process.env.APPLE_API_KEY_ID
+      };
+
+      if (includeIssuer && process.env.APPLE_API_ISSUER) {
+        options.appleApiIssuer = process.env.APPLE_API_ISSUER;
+      }
+
+      await notarize(options);
     };
 
-    if (process.env.APPLE_API_ISSUER) {
-      options.appleApiIssuer = process.env.APPLE_API_ISSUER;
+    try {
+      await runNotarize(Boolean(process.env.APPLE_API_ISSUER));
+    } catch (error) {
+      if (!process.env.APPLE_API_ISSUER || !isInvalidNotarytoolOptionError(error)) {
+        throw error;
+      }
+      console.warn('notarytool rejected the issuer option; retrying notarization without APPLE_API_ISSUER.');
+      await runNotarize(false);
     }
-
-    await notarize(options);
     console.log('Notarization finished.');
   } finally {
     if (apiKey.temporary) {
