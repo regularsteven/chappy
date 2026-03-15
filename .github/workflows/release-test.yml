@@ -80,11 +80,31 @@ jobs:
             echo "No DMG artifact found in release/."
             exit 1
           fi
-          NOTARY_ARGS=(--key "${APPLE_API_KEY_PATH}" --key-id "${APPLE_API_KEY_ID}")
+          run_notarytool() {
+            local use_issuer="$1"
+            local -a args=(submit "${DMG_PATH}" --key "${APPLE_API_KEY_PATH}" --key-id "${APPLE_API_KEY_ID}" --wait)
+            if [[ "${use_issuer}" == "with-issuer" ]]; then
+              args+=(--issuer "${APPLE_API_ISSUER}")
+            fi
+            set +e
+            NOTARY_OUTPUT="$(xcrun notarytool "${args[@]}" 2>&1)"
+            NOTARY_STATUS=$?
+            set -e
+            printf '%s\n' "${NOTARY_OUTPUT}"
+            return "${NOTARY_STATUS}"
+          }
+
           if [[ -n "${APPLE_API_ISSUER:-}" ]]; then
-            NOTARY_ARGS+=(--issuer "${APPLE_API_ISSUER}")
+            if ! run_notarytool with-issuer; then
+              if [[ "${NOTARY_OUTPUT}" != *"Invalid option:"* ]]; then
+                exit "${NOTARY_STATUS}"
+              fi
+              echo "Retrying notarytool submit without --issuer."
+              run_notarytool without-issuer
+            fi
+          else
+            run_notarytool without-issuer
           fi
-          xcrun notarytool submit "${DMG_PATH}" "${NOTARY_ARGS[@]}" --wait
           xcrun stapler staple "${APP_PATH}"
           xcrun stapler staple "${DMG_PATH}"
 
