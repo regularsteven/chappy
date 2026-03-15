@@ -641,7 +641,6 @@
               :ref="(element) => setPreservedWebviewRef(tab.id, element)"
               :src="resolveLaunchUrl(tab)"
               :partition="resolveWebviewPartition(tab)"
-              :useragent="defaultUserAgent"
               allowpopups
               class="h-full w-full border-0"
               @did-navigate="(event) => handleWebViewNavigationForTab(tab.id, event)"
@@ -658,7 +657,6 @@
               :key="activeTab.id"
               :src="activeTabLaunchUrl"
               :partition="activeTabWebviewPartition"
-              :useragent="defaultUserAgent"
               allowpopups
               class="h-full w-full border-0"
               @did-navigate="(event) => handleWebViewNavigationForTab(activeTab.id, event)"
@@ -1245,9 +1243,6 @@ const serviceAddLabel = (serviceId) => (serviceCountByIconId.value[serviceId] > 
 
 const resolveWebviewPartition = (tab) => `persist:${tab?.partition || tab?.id || 'tab'}`;
 const activeTabWebviewPartition = computed(() => resolveWebviewPartition(activeTab.value));
-
-const defaultUserAgent =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 13_0_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36';
 
 const newTab = reactive({
   title: '',
