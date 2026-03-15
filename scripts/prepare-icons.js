@@ -37,6 +37,14 @@ const renderPngFromSvg = () => {
   fs.writeFileSync(LOGO_PNG, pngData.asPng());
 };
 
+const hasExistingIcns = () => {
+  try {
+    return fs.existsSync(LOGO_ICNS) && fs.statSync(LOGO_ICNS).size > 0;
+  } catch {
+    return false;
+  }
+};
+
 if (!fs.existsSync(LOGO_SVG)) {
   console.error(`❌ Missing logo file: ${LOGO_SVG}`);
   process.exit(1);
@@ -61,7 +69,15 @@ try {
     run('sips', ['-z', `${size * 2}`, `${size * 2}`, LOGO_PNG, '--out', retinaName]);
   }
 
-  run('iconutil', ['-c', 'icns', ICONSET_DIR, '-o', LOGO_ICNS]);
+  try {
+    run('iconutil', ['-c', 'icns', ICONSET_DIR, '-o', LOGO_ICNS]);
+  } catch (error) {
+    if (!hasExistingIcns()) {
+      throw error;
+    }
+    console.warn('⚠️ iconutil rejected the generated iconset; keeping existing .icns asset.');
+    console.warn(error.message);
+  }
   console.log(`✅ App icons generated:\n- ${LOGO_PNG}\n- ${LOGO_ICNS}`);
 } catch (error) {
   console.error('❌ Failed to prepare app icons.');
