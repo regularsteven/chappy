@@ -242,3 +242,22 @@
 #chappy-app-shell .hover\:border-slate-500:hover {
   border-color: var(--ch-border-soft);
 }
+
+/* Taxonomy filter checkboxes */
+#chappy-app-shell .taxonomy-checkbox {
+  cursor: pointer;
+  user-select: none;
+}
+
+#chappy-app-shell[data-theme='light'] .taxonomy-checkbox {
+  border-color: #cbd5e1;
+  background-color: #f1f5f9;
+}
+
+#chappy-app-shell[data-theme='light'] .taxonomy-checkbox:hover {
+  border-color: #94a3b8;
+}
+
+#chappy-app-shell[data-theme='light'] .taxonomy-checkbox .border-slate-600 {
+  border-color: #94a3b8;
+}

@@ -289,7 +289,7 @@
                   <p class="text-xs uppercase tracking-widest text-slate-500">Available services</p>
                   <h2 class="text-lg font-semibold text-white">Tap to add</h2>
                   <p class="text-sm text-slate-400">
-                    The grid below shows curated chat and productivity services — add as many variations as you
+                    The grid below shows curated chat, social, AI, and productivity services — add as many variations as you
                     need. Each addition keeps its own session partition.
                   </p>
                 </div>
@@ -314,9 +314,66 @@
                   <p v-if="quickAddError" class="text-rose-400 text-xs">{{ quickAddError }}</p>
                 </div>
               </div>
+              
+              <!-- Taxonomy Filter Bar -->
+              <div id="taxonomy-filter-bar" class="mt-4 flex flex-wrap items-center gap-3">
+                <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">Filter:</span>
+                
+                <!-- Show All toggle -->
+                <label
+                  class="taxonomy-checkbox inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition"
+                  :class="selectedTaxonomies.size === 0 
+                    ? 'border-sky-500 bg-sky-500/20 text-sky-400' 
+                    : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="selectedTaxonomies.size === 0"
+                    class="hidden"
+                    @change="clearTaxonomyFilters"
+                  />
+                  <span class="flex h-4 w-4 items-center justify-center rounded">
+                    <svg v-if="selectedTaxonomies.size === 0" class="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                  </span>
+                  Show All
+                </label>
+                
+                <!-- Taxonomy checkboxes -->
+                <label
+                  v-for="(taxonomy, key) in taxonomies"
+                  :key="key"
+                  class="taxonomy-checkbox inline-flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition"
+                  :class="selectedTaxonomies.has(key) 
+                    ? 'border-sky-500 bg-sky-500/20 text-sky-400' 
+                    : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="selectedTaxonomies.has(key)"
+                    class="hidden"
+                    @change="toggleTaxonomy(key)"
+                  />
+                  <span 
+                    class="flex h-4 w-4 items-center justify-center rounded border transition"
+                    :class="selectedTaxonomies.has(key) ? 'border-sky-500 bg-sky-500' : 'border-slate-600'"
+                  >
+                    <svg v-if="selectedTaxonomies.has(key)" class="h-2.5 w-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+                    </svg>
+                  </span>
+                  <span 
+                    class="h-2 w-2 rounded-full"
+                    :style="{ backgroundColor: taxonomy.color }"
+                  ></span>
+                  {{ taxonomy.label }}
+                </label>
+              </div>
+              
               <div id="available-services-grid" class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <article
-                  v-for="service in availableServices"
+                  v-for="service in filteredServices"
                   :key="service.id"
                   :id="`available-service-${service.id}`"
                   class="service-card flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-950/50 p-4 shadow-[0_10px_25px_rgba(2,6,23,0.7)] transition hover:border-sky-500/60"
@@ -338,6 +395,24 @@
                     <div>
                       <p class="text-sm font-semibold text-white">{{ service.title }}</p>
                       <p class="text-xs text-slate-400">{{ service.description }}</p>
+                      <div v-if="service.taxonomies" class="mt-1.5 flex flex-wrap gap-1">
+                        <span 
+                          v-for="taxonomyKey in service.taxonomies" 
+                          :key="taxonomyKey"
+                          class="inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
+                          :style="{ 
+                            borderColor: taxonomies[taxonomyKey]?.color || '#64748b',
+                            color: taxonomies[taxonomyKey]?.color || '#94a3b8',
+                            backgroundColor: (taxonomies[taxonomyKey]?.color || '#64748b') + '15'
+                          }"
+                        >
+                          <span 
+                            class="h-1.5 w-1.5 rounded-full"
+                            :style="{ backgroundColor: taxonomies[taxonomyKey]?.color || '#64748b' }"
+                          ></span>
+                          {{ taxonomies[taxonomyKey]?.label || taxonomyKey }}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div class="mt-3 flex min-h-[36px] items-center justify-between text-xs text-slate-400">
@@ -715,7 +790,7 @@
 <script setup>
 import SettingsModal from './components/SettingsModal.vue';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { accentColors, serviceCatalog } from './data/serviceCatalog.mjs';
+import { accentColors, taxonomies, serviceCatalog } from './data/serviceCatalog.mjs';
 import defaultIconUrl from './assets/icons/custom.svg?url';
 import chappyLogoUrl from '../../resources/chappy-logo.svg?url';
 
@@ -730,6 +805,33 @@ const preserveSessionResetNonce = ref(0);
 const CONFIG_VERSION = 1;
 const defaultIcon = defaultIconUrl;
 const availableServices = serviceCatalog;
+const selectedTaxonomies = ref(new Set());
+
+// Computed filtered services based on taxonomy selection
+const filteredServices = computed(() => {
+  if (selectedTaxonomies.value.size === 0) {
+    return availableServices;
+  }
+  return availableServices.filter(service => 
+    service.taxonomies?.some(t => selectedTaxonomies.value.has(t))
+  );
+});
+
+// Toggle taxonomy filter
+const toggleTaxonomy = (taxonomyKey) => {
+  const newSet = new Set(selectedTaxonomies.value);
+  if (newSet.has(taxonomyKey)) {
+    newSet.delete(taxonomyKey);
+  } else {
+    newSet.add(taxonomyKey);
+  }
+  selectedTaxonomies.value = newSet;
+};
+
+// Clear all taxonomy filters
+const clearTaxonomyFilters = () => {
+  selectedTaxonomies.value = new Set();
+};
 const tabs = ref([]);
 const activeTabId = ref('chappy');
 const chappyWorkspaceTab = ref('your-chappy');
