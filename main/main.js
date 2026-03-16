@@ -155,6 +155,12 @@ const sanitizeThemePreference = (value) => {
 const launchModes = new Set(['default', 'custom', 'preserve']);
 const externalProtocols = new Set(['http:', 'https:', 'mailto:', 'tel:']);
 const ALLOWED_ICON_MIMES = new Set(['image/svg+xml', 'image/png', 'image/x-icon']);
+const DEFAULT_PLATFORM_UA_BY_OS = {
+  darwin: 'Macintosh; Intel Mac OS X 10_15_7',
+  win32: 'Windows NT 10.0; Win64; x64',
+  linux: 'X11; Linux x86_64'
+};
+let compatibilityUserAgent = '';
 
 const sanitizeIconPath = (value) => {
   if (typeof value !== 'string') {
@@ -173,6 +179,34 @@ const sanitizeIconPath = (value) => {
     return '';
   }
   return normalized.replace(/\\/g, '/');
+};
+
+const buildCompatibilityUserAgent = (sourceUserAgent) => {
+  const chromeVersion = process.versions.chrome || '120.0.0.0';
+  const platformToken = DEFAULT_PLATFORM_UA_BY_OS[process.platform] || DEFAULT_PLATFORM_UA_BY_OS.linux;
+  const fallbackUserAgent = `Mozilla/5.0 (${platformToken}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Safari/537.36`;
+  const rawUserAgent =
+    typeof sourceUserAgent === 'string' && sourceUserAgent.trim() ? sourceUserAgent.trim() : fallbackUserAgent;
+  const normalizedUserAgent = rawUserAgent
+    .replace(/\s+Chappy\/[^\s]+/gi, '')
+    .replace(/\s+Electron\/[^\s]+/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  if (/Chrome\/[^\s]+/i.test(normalizedUserAgent)) {
+    return normalizedUserAgent;
+  }
+  if (/Safari\/[^\s]+/i.test(normalizedUserAgent)) {
+    return normalizedUserAgent.replace(/Safari\/[^\s]+/i, `Chrome/${chromeVersion} Safari/537.36`);
+  }
+  return `${normalizedUserAgent} Chrome/${chromeVersion} Safari/537.36`.trim();
+};
+
+const getCompatibilityUserAgent = () => {
+  if (!compatibilityUserAgent) {
+    compatibilityUserAgent = buildCompatibilityUserAgent(app.userAgentFallback);
+  }
+  return compatibilityUserAgent;
 };
 
 const sanitizeTab = (tab, index, ids, partitions) => {
@@ -437,7 +471,7 @@ ipcMain.handle('chappy:fetch-icon-from-url', async (_event, { pageUrl, tabId }) 
   try {
     const res = await net.fetch(pageUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': getCompatibilityUserAgent(),
         Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
       }
     });
@@ -458,7 +492,7 @@ const saveIconFromUrl = async (iconUrl, safeTabId, tabId) => {
   try {
     iconRes = await net.fetch(iconUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': getCompatibilityUserAgent(),
         Accept: 'image/*,*/*;q=0.8'
       }
     });
@@ -503,7 +537,7 @@ ipcMain.handle('chappy:fetch-and-save-icon', async (_event, { iconUrl, tabId }) 
   try {
     iconRes = await net.fetch(iconUrl, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': getCompatibilityUserAgent(),
         Accept: 'image/*,*/*;q=0.8'
       }
     });
@@ -566,6 +600,10 @@ ipcMain.handle('chappy:restart-to-apply', () => {
 ipcMain.handle('chappy:set-badge-count', (_event, count) => setAppBadgeCount(count));
 
 app.on('web-contents-created', (_event, contents) => {
+  if (contents.getType() === 'webview' && typeof contents.setUserAgent === 'function') {
+    contents.setUserAgent(getCompatibilityUserAgent());
+  }
+
   if (typeof contents.setWindowOpenHandler !== 'function') {
     return;
   }
@@ -600,6 +638,10 @@ const createMainWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       webviewTag: true
     }
+  });
+
+  browserWindow.webContents.on('will-attach-webview', (_event, _webPreferences, params) => {
+    params.useragent = getCompatibilityUserAgent();
   });
 
   browserWindow.once('ready-to-show', () => browserWindow.show());
