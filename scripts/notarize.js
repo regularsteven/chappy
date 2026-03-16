@@ -32,6 +32,9 @@ exports.default = async function notarizeMac(context) {
     return;
   }
 
+  console.log('Skipping macOS notarization: temporarily disabled.');
+  return;
+
   const appName = context.packager.appInfo.productFilename;
   const appPath = path.join(context.appOutDir, `${appName}.app`);
   const requireSigning = process.env.CHAPPY_REQUIRE_MAC_SIGNING === 'true';
