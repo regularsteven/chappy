@@ -1,4 +1,4 @@
-import { accentColors, serviceCatalogBase } from './serviceCatalog.core.mjs';
+import { accentColors, taxonomies, serviceCatalogBase } from './serviceCatalog.core.mjs';
 import defaultIcon from '../assets/icons/custom.svg?url';
 
 const iconFiles = import.meta.glob('../assets/icons/*.svg', {
@@ -13,7 +13,7 @@ const iconMap = Object.entries(iconFiles).reduce((accumulator, [filePath, iconUr
   return accumulator;
 }, {});
 
-export { accentColors };
+export { accentColors, taxonomies };
 
 export const serviceCatalog = serviceCatalogBase.map((tab) => ({
   ...tab,

@@ -13,4 +13,4 @@ Retry macOS notarization without an issuer when `notarytool` rejects the issuer 
 
 ## Details
 
-Recent release-test runs failed on the macOS job because CI was attempting notarization twice: once in Electron Builder's `afterSign` hook and again in the workflow's explicit DMG notarization step. Chappy now skips the `afterSign` notarization path in CI and relies on the workflow step, which retries without `--issuer` whenever the issuer-based attempt fails for individual App Store Connect API keys.
+Recent release-test runs failed on the macOS job because `notarytool` can reject `--issuer` for individual App Store Connect API keys even when an issuer secret is present. Chappy now retries notarization without the issuer flag in both the Electron after-sign hook and the GitHub Actions release workflows when that specific CLI error occurs.
