@@ -96,9 +96,6 @@ jobs:
 
           if [[ -n "${APPLE_API_ISSUER:-}" ]]; then
             if ! run_notarytool with-issuer; then
-              if [[ "${NOTARY_OUTPUT}" != *"Invalid option:"* ]]; then
-                exit "${NOTARY_STATUS}"
-              fi
               echo "Retrying notarytool submit without --issuer."
               run_notarytool without-issuer
             fi
