@@ -27,6 +27,11 @@ exports.default = async function notarizeMac(context) {
     return;
   }
 
+  if (process.env.CHAPPY_SKIP_AFTER_SIGN_NOTARIZE === 'true') {
+    console.log('Skipping afterSign notarization; workflow will notarize release artifacts explicitly.');
+    return;
+  }
+
   const appName = context.packager.appInfo.productFilename;
   const appPath = path.join(context.appOutDir, `${appName}.app`);
   const requireSigning = process.env.CHAPPY_REQUIRE_MAC_SIGNING === 'true';
@@ -69,7 +74,7 @@ exports.default = async function notarizeMac(context) {
     if (process.env.APPLE_API_ISSUER) {
       try {
         await runNotarize(true);
-      } catch (error) {
+      } catch {
         console.warn('Initial notarization attempt failed; retrying without APPLE_API_ISSUER.');
         await runNotarize(false);
       }
