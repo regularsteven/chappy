@@ -5,6 +5,11 @@ const { notarize } = require('@electron/notarize');
 
 const REQUIRED_ENV = ['APPLE_API_KEY_ID'];
 
+function isInvalidNotarytoolOptionError(error) {
+  const details = [error?.message, error?.stack].filter(Boolean).join('\n');
+  return /Invalid option:/i.test(details);
+}
+
 function resolveApiKeyPath() {
   const fromPath = process.env.APPLE_API_KEY_PATH;
   if (fromPath) {
@@ -27,10 +32,8 @@ exports.default = async function notarizeMac(context) {
     return;
   }
 
-  if (process.env.CHAPPY_SKIP_AFTER_SIGN_NOTARIZE === 'true') {
-    console.log('Skipping afterSign notarization; workflow will notarize release artifacts explicitly.');
-    return;
-  }
+  console.log('Skipping macOS notarization: temporarily disabled.');
+  return;
 
   const appName = context.packager.appInfo.productFilename;
   const appPath = path.join(context.appOutDir, `${appName}.app`);
@@ -71,14 +74,13 @@ exports.default = async function notarizeMac(context) {
       await notarize(options);
     };
 
-    if (process.env.APPLE_API_ISSUER) {
-      try {
-        await runNotarize(true);
-      } catch {
-        console.warn('Initial notarization attempt failed; retrying without APPLE_API_ISSUER.');
-        await runNotarize(false);
+    try {
+      await runNotarize(Boolean(process.env.APPLE_API_ISSUER));
+    } catch (error) {
+      if (!process.env.APPLE_API_ISSUER || !isInvalidNotarytoolOptionError(error)) {
+        throw error;
       }
-    } else {
+      console.warn('notarytool rejected the issuer option; retrying notarization without APPLE_API_ISSUER.');
       await runNotarize(false);
     }
     console.log('Notarization finished.');

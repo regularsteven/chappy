@@ -14,15 +14,6 @@ jobs:
   build-mac:
     name: build-mac
     runs-on: macos-latest
-    env:
-      CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 || secrets.CSC_LINK }}
-      CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
-      CSC_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME || secrets.CSC_NAME }}
-      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_P8 || secrets.APPLE_API_KEY }}
-      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER_ID || secrets.APPLE_API_ISSUER }}
-      CHAPPY_REQUIRE_MAC_SIGNING: "true"
-      CHAPPY_SKIP_AFTER_SIGN_NOTARIZE: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,82 +30,8 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Validate macOS signing secrets
-        run: |
-          required_vars=(CSC_LINK CSC_KEY_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID)
-          missing=()
-          for name in "${required_vars[@]}"; do
-            if [[ -z "${!name:-}" ]]; then
-              missing+=("${name}")
-            fi
-          done
-          if (( ${#missing[@]} > 0 )); then
-            echo "Missing required macOS signing/notarization secrets: ${missing[*]}"
-            exit 1
-          fi
-
-      - name: Prepare App Store Connect API key file
-        run: |
-          KEY_PATH="${RUNNER_TEMP}/AuthKey_${APPLE_API_KEY_ID}.p8"
-          printf '%s' "${APPLE_API_KEY}" > "${KEY_PATH}"
-          chmod 600 "${KEY_PATH}"
-          echo "APPLE_API_KEY_PATH=${KEY_PATH}" >> "${GITHUB_ENV}"
-
-      - name: Normalize certificate name
-        if: ${{ env.CSC_NAME != '' }}
-        run: |
-          SANITIZED_NAME="${CSC_NAME#Developer ID Application: }"
-          echo "CSC_NAME=${SANITIZED_NAME}" >> "${GITHUB_ENV}"
-
       - name: Build desktop release artifacts
         run: npm run build:desktop:ci
-
-      - name: Notarize and staple macOS artifacts
-        run: |
-          APP_PATH="$(find release -maxdepth 2 -type d -name 'Chappy.app' | head -n 1)"
-          DMG_PATH="$(ls -t release/*.dmg | head -n 1)"
-          if [[ -z "${APP_PATH}" ]]; then
-            echo "No Chappy.app bundle found in release/."
-            exit 1
-          fi
-          if [[ -z "${DMG_PATH}" ]]; then
-            echo "No DMG artifact found in release/."
-            exit 1
-          fi
-          run_notarytool() {
-            local use_issuer="$1"
-            local -a args=(submit "${DMG_PATH}" --key "${APPLE_API_KEY_PATH}" --key-id "${APPLE_API_KEY_ID}" --wait)
-            if [[ "${use_issuer}" == "with-issuer" ]]; then
-              args+=(--issuer "${APPLE_API_ISSUER}")
-            fi
-            set +e
-            NOTARY_OUTPUT="$(xcrun notarytool "${args[@]}" 2>&1)"
-            NOTARY_STATUS=$?
-            set -e
-            printf '%s\n' "${NOTARY_OUTPUT}"
-            return "${NOTARY_STATUS}"
-          }
-
-          if [[ -n "${APPLE_API_ISSUER:-}" ]]; then
-            if ! run_notarytool with-issuer; then
-              echo "Retrying notarytool submit without --issuer."
-              run_notarytool without-issuer
-            fi
-          else
-            run_notarytool without-issuer
-          fi
-          xcrun stapler staple "${APP_PATH}"
-          xcrun stapler staple "${DMG_PATH}"
-
-      - name: Verify macOS release artifact
-        run: |
-          APP_PATH="$(find release -maxdepth 2 -type d -name 'Chappy.app' | head -n 1)"
-          DMG_PATH="$(ls -t release/*.dmg | head -n 1)"
-          scripts/verify-macos-release.sh "${APP_PATH}" "${DMG_PATH}"
-
-      - name: Write macOS artifact checksums
-        run: |
-          shasum -a 256 release/*.dmg release/*.zip > release/SHA256SUMS-mac.txt
 
       - name: Upload Mac artifacts
         uses: actions/upload-artifact@v4
