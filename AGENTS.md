@@ -43,6 +43,18 @@ Mandatory rules:
 4. Open and merge PR: `dev` -> `test`.
 5. Run/confirm exhaustive verification on `test` (minimum: `npm test` + `npm run build:renderer`).
 6. **Wait for `release-test` workflow to pass on `test`** before merging to `main`. This validates Mac and Windows release builds.
+
+   Both waits below are written to avoid a race that has already caused an unvalidated merge to `main`: a freshly created PR or push has no runs registered yet, so naive polling reports either "no checks reported" or success belonging to a *previous* run.
+
+   ```bash
+   gh pr checks <branch> --watch --fail-fast
+   ```
+
+   ```bash
+   sleep 15 && gh run watch "$(gh run list --workflow=release-test.yml --branch=test --limit=1 --json databaseId --jq '.[0].databaseId')" --exit-status
+   ```
+
+   If `gh pr checks` reports no checks, wait and re-run it. Do not treat that as a pass.
 7. Open and merge PR: `test` -> `main`.
 8. Mark the job done only after the change is merged to `main` and required checks have passed.
 
@@ -69,7 +81,9 @@ Use `npm run build` when you need the vue-update build; use `npm run build:full`
 
 ## Merge policy
 
-- Merge strategy: squash merges only.
+- `feature/* -> dev`: **squash merge**.
+- Promotions (`dev -> test`, `test -> main`): **merge commit**. Squashing a promotion makes the branches diverge permanently and forces a later re-sync commit.
+- **Never pass `--admin` to `gh pr merge`**, and never merge a PR whose required checks are failing or have not yet reported. `guard-main-source` and `release-test` are the only enforcement of the promotion path.
 - Prefer small PRs with clear, reviewable scope.
 
 ## Release policy
@@ -108,3 +122,5 @@ See [docs/VERSIONING.md](docs/VERSIONING.md) for the full methodology.
 - [ ] README/AGENTS/docs updated if workflow or behavior changed
 - [ ] Feature doc created in `docs/features/` (see [docs/features/TEMPLATE.md](docs/features/TEMPLATE.md))
 - [ ] Release notes/changelog prepared when version changed
+- [ ] Checks were observed passing before merge (not merged past a pending or failing run)
+- [ ] No `--admin` or other check-bypassing flag was used
