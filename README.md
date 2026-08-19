@@ -9,6 +9,7 @@ Chappy is a chat-first Electron app that runs web clients in isolated workspace 
   - `Default URL` (app-defined service URL)
   - `Custom URL` (user-defined launch URL)
   - `Preserve URL for launch` (reopen the last visited URL)
+- Clicking an already-active service tab forces it back to the URL resolved by its current launch mode.
 - Per-tab persistent session partition so duplicate services do not share browser storage.
 - Workspace management in the Chappy tab: add, remove, reorder, and configure tab launch behavior.
 - Persistent local config in `~/.chappy/config.json`.
