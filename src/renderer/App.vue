@@ -718,8 +718,11 @@
               :partition="resolveWebviewPartition(tab)"
               allowpopups
               class="h-full w-full border-0"
+              @did-start-navigation="(event) => handleWebviewNavigationTrace(tab.id, 'did-start-navigation', event)"
+              @did-redirect-navigation="(event) => handleWebviewNavigationTrace(tab.id, 'did-redirect-navigation', event)"
               @did-navigate="(event) => handleWebViewNavigationForTab(tab.id, event)"
-              @did-navigate-in-page="(event) => handleWebViewNavigationForTab(tab.id, event)"
+              @did-navigate-in-page="(event) => handleWebViewInPageNavigationForTab(tab.id, event)"
+              @did-fail-load="(event) => handleWebviewNavigationFailure(tab.id, event)"
               @dom-ready="() => handleWebviewDomReady(tab.id)"
               @page-title-updated="(event) => handleWebviewTitleUpdatedForTab(tab.id, event)"
             ></webview>
@@ -734,8 +737,11 @@
               :partition="activeTabWebviewPartition"
               allowpopups
               class="h-full w-full border-0"
+              @did-start-navigation="(event) => handleWebviewNavigationTrace(activeTab.id, 'did-start-navigation', event)"
+              @did-redirect-navigation="(event) => handleWebviewNavigationTrace(activeTab.id, 'did-redirect-navigation', event)"
               @did-navigate="(event) => handleWebViewNavigationForTab(activeTab.id, event)"
-              @did-navigate-in-page="(event) => handleWebViewNavigationForTab(activeTab.id, event)"
+              @did-navigate-in-page="(event) => handleWebViewInPageNavigationForTab(activeTab.id, event)"
+              @did-fail-load="(event) => handleWebviewNavigationFailure(activeTab.id, event)"
               @dom-ready="() => handleWebviewDomReady(activeTab.id)"
               @page-title-updated="(event) => handleWebviewTitleUpdatedForTab(activeTab.id, event)"
             ></webview>
@@ -1495,6 +1501,35 @@ const handleWebviewTitleUpdatedForTab = (tabId, event) => {
   syncUnreadStateFromTitle(tabId, event?.title);
 };
 
+const logWebviewEvent = (tabId, label, payload = {}) => {
+  const tab = tabs.value.find((candidate) => candidate.id === tabId);
+  const tabLabel = tab?.title || tabId;
+  console.info(`[Chappy][Webview][${tabLabel}] ${label}`, payload);
+};
+
+const handleWebviewNavigationTrace = (tabId, label, event) => {
+  if (tabId === 'chappy') {
+    return;
+  }
+  logWebviewEvent(tabId, label, {
+    url: event?.url || '',
+    isMainFrame: event?.isMainFrame,
+    isInPlace: event?.isInPlace,
+  });
+};
+
+const handleWebviewNavigationFailure = (tabId, event) => {
+  if (tabId === 'chappy') {
+    return;
+  }
+  logWebviewEvent(tabId, 'did-fail-load', {
+    url: event?.validatedURL || event?.url || '',
+    errorCode: event?.errorCode,
+    errorDescription: event?.errorDescription || '',
+    isMainFrame: event?.isMainFrame,
+  });
+};
+
 const captureActiveWebviewUrl = () => {
   if (activeTabId.value === 'chappy') {
     return;
@@ -1510,8 +1545,42 @@ const captureActiveWebviewUrl = () => {
   }
 };
 
+const forceTabToLaunchUrl = (tabId) => {
+  if (tabId === 'chappy') {
+    return false;
+  }
+  const tab = tabs.value.find((candidate) => candidate.id === tabId);
+  if (!tab) {
+    return false;
+  }
+  const targetUrl = resolveLaunchUrl(tab);
+  if (!targetUrl) {
+    return false;
+  }
+  const webview = resolveWebviewForTabId(tabId);
+  if (!webview || typeof webview.loadURL !== 'function') {
+    return false;
+  }
+  logWebviewEvent(tabId, 'force-launch-url', {
+    launchMode: tab.launchMode,
+    targetUrl,
+  });
+  try {
+    void webview.loadURL(targetUrl);
+    return true;
+  } catch (error) {
+    logWebviewEvent(tabId, 'force-launch-url-failed', {
+      launchMode: tab.launchMode,
+      targetUrl,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+};
+
 const selectTab = (id) => {
   if (id === activeTabId.value) {
+    forceTabToLaunchUrl(id);
     return;
   }
   captureActiveWebviewUrl();
@@ -1837,6 +1906,23 @@ const handleWebViewNavigationForTab = (tabId, event) => {
   if (tabId === 'chappy') {
     return;
   }
+  logWebviewEvent(tabId, 'did-navigate', {
+    url: event?.url || '',
+    isMainFrame: event?.isMainFrame,
+    isInPlace: event?.isInPlace,
+  });
+  persistLastUrlForTab(tabId, event?.url);
+};
+
+const handleWebViewInPageNavigationForTab = (tabId, event) => {
+  if (tabId === 'chappy') {
+    return;
+  }
+  logWebviewEvent(tabId, 'did-navigate-in-page', {
+    url: event?.url || '',
+    isMainFrame: event?.isMainFrame,
+    isInPlace: event?.isInPlace,
+  });
   persistLastUrlForTab(tabId, event?.url);
 };
 
