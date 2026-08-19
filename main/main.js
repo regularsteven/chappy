@@ -95,11 +95,13 @@ const createDefaultConfig = () => ({
   version: CONFIG_VERSION,
   activeTabId: 'chappy',
   themePreference: 'system',
+  displayMode: 'desktop',
   useSystemBrowserLinks: true,
   preserveTabMemory: true,
   openServicesOnLaunch: false,
   enableAutoUpdate: true,
-  tabs: []
+  tabs: [],
+  mirrorWidgets: []
 });
 
 const isObject = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -152,6 +154,65 @@ const sanitizeThemePreference = (value) => {
   const normalized = value.trim();
   return themePreferences.has(normalized) ? normalized : 'system';
 };
+const displayModes = new Set(['desktop', 'mirror']);
+const sanitizeDisplayMode = (value) => {
+  if (typeof value !== 'string') {
+    return 'desktop';
+  }
+  const normalized = value.trim();
+  return displayModes.has(normalized) ? normalized : 'desktop';
+};
+
+const clampNumber = (value, fallback, min, max) => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, Math.round(num)));
+};
+
+const MIRROR_COORD_MAX = 20000;
+const MIRROR_WINDOW_MIN_WIDTH = 320;
+const MIRROR_WINDOW_MIN_HEIGHT = 240;
+
+const sanitizeMirrorWindow = (value) => {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  return {
+    x: clampNumber(value.x, 40, 0, MIRROR_COORD_MAX),
+    y: clampNumber(value.y, 40, 0, MIRROR_COORD_MAX),
+    width: clampNumber(value.width, 760, MIRROR_WINDOW_MIN_WIDTH, MIRROR_COORD_MAX),
+    height: clampNumber(value.height, 540, MIRROR_WINDOW_MIN_HEIGHT, MIRROR_COORD_MAX),
+    z: clampNumber(value.z, 1, 1, 1000000),
+    open: value.open === true
+  };
+};
+
+const sanitizeMirrorWidgets = (input) => {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const ids = new Set();
+  return input
+    .map((widget, index) => {
+      if (!isObject(widget) || widget.type !== 'clock') {
+        return null;
+      }
+      const idSeed =
+        typeof widget.id === 'string' && widget.id.trim() ? widget.id : `widget-${index + 1}`;
+      return {
+        id: ensureUnique(idSeed, ids, `widget-${index + 1}`),
+        type: 'clock',
+        timeZone: typeof widget.timeZone === 'string' ? widget.timeZone.trim().slice(0, 64) : '',
+        x: clampNumber(widget.x, 48, 0, MIRROR_COORD_MAX),
+        y: clampNumber(widget.y, 48, 0, MIRROR_COORD_MAX),
+        z: clampNumber(widget.z, 1, 1, 1000000)
+      };
+    })
+    .filter(Boolean);
+};
+
 const launchModes = new Set(['default', 'custom', 'preserve']);
 const externalProtocols = new Set(['http:', 'https:', 'mailto:', 'tel:']);
 const ALLOWED_ICON_MIMES = new Set(['image/svg+xml', 'image/png', 'image/x-icon']);
@@ -257,7 +318,8 @@ const sanitizeTab = (tab, index, ids, partitions) => {
     preserveUrl: launchMode === 'preserve',
     lastUrl,
     primaryIconPath: primaryIconPath || undefined,
-    secondaryIconPath: secondaryIconPath || undefined
+    secondaryIconPath: secondaryIconPath || undefined,
+    mirrorWindow: sanitizeMirrorWindow(tab.mirrorWindow)
   };
 };
 
@@ -289,13 +351,15 @@ const sanitizeConfigPayload = (payload) => {
     version: CONFIG_VERSION,
     activeTabId,
     themePreference: sanitizeThemePreference(payload.themePreference),
+    displayMode: sanitizeDisplayMode(payload.displayMode),
     useSystemBrowserLinks: payload.useSystemBrowserLinks !== false,
     preserveTabMemory,
     openServicesOnLaunch,
     enableAutoUpdate,
     lastUpdateCheck: typeof payload.lastUpdateCheck === 'string' ? payload.lastUpdateCheck : undefined,
     lastUpdateApplied: typeof payload.lastUpdateApplied === 'string' ? payload.lastUpdateApplied : undefined,
-    tabs
+    tabs,
+    mirrorWidgets: sanitizeMirrorWidgets(payload.mirrorWidgets)
   };
 };
 
