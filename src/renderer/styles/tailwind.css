@@ -261,3 +261,124 @@
 #chappy-app-shell[data-theme='light'] .taxonomy-checkbox .border-slate-600 {
   border-color: #94a3b8;
 }
+
+/* Mirror display mode: pure-black surfaces regardless of theme preference —
+   the mirror lights up as few pixels as possible. This block must stay after
+   the [data-theme] blocks so it wins at equal specificity. */
+#chappy-app-shell[data-display='mirror'] {
+  --ch-root-bg: #000000;
+  --ch-panel-bg: #000000;
+  --ch-panel-bg-soft: rgba(0, 0, 0, 0.88);
+  --ch-card-bg: rgba(2, 6, 23, 0.55);
+  --ch-card-bg-strong: #020617;
+  --ch-border: #111827;
+  --ch-border-soft: #1f2937;
+  --ch-text-strong: #e2e8f0;
+  --ch-text-primary: #cbd5e1;
+  --ch-text-secondary: #94a3b8;
+  --ch-text-muted: #475569;
+  --ch-tab-bg: #000000;
+  --ch-tab-hover: #0b1220;
+  --ch-tab-active: #111827;
+  --ch-overlay: rgba(0, 0, 0, 0.82);
+  --ch-logo-bg: #e2e8f0;
+  --ch-logo-border: rgba(148, 163, 184, 0.25);
+  color-scheme: dark;
+}
+
+#mirror-canvas {
+  background-color: #000000;
+}
+
+#mirror-canvas .mirror-canvas-hint {
+  color: #1e293b;
+}
+
+.mirror-window {
+  background-color: #000000;
+  border: 1px solid rgba(30, 41, 59, 0.9);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9);
+}
+
+.mirror-window--active {
+  border-color: rgba(71, 85, 105, 0.9);
+}
+
+.mirror-window-titlebar {
+  background-color: rgba(2, 6, 23, 0.92);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.9);
+  color: #475569;
+  cursor: move;
+}
+
+.mirror-window--active .mirror-window-titlebar {
+  color: #94a3b8;
+}
+
+.mirror-window-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  color: inherit;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.mirror-window-control:hover {
+  background-color: rgba(30, 41, 59, 0.8);
+  color: #e2e8f0;
+}
+
+.mirror-window-resize-handle {
+  background: linear-gradient(
+    135deg,
+    transparent 0%,
+    transparent 55%,
+    rgba(71, 85, 105, 0.7) 56%,
+    transparent 60%,
+    transparent 70%,
+    rgba(71, 85, 105, 0.7) 71%,
+    transparent 75%
+  );
+}
+
+.mirror-window webview {
+  background-color: #ffffff;
+}
+
+.clock-widget {
+  color: #cbd5e1;
+  cursor: move;
+  background-color: transparent;
+  border: 1px solid transparent;
+}
+
+.clock-widget:hover {
+  background-color: rgba(2, 6, 23, 0.6);
+  border-color: rgba(30, 41, 59, 0.8);
+}
+
+.clock-widget-caption {
+  color: #475569;
+}
+
+.clock-widget-select {
+  background-color: #020617;
+  border: 1px solid rgba(51, 65, 85, 0.8);
+  color: #94a3b8;
+  max-width: 10rem;
+}
+
+#mirror-add-clock-button {
+  background-color: rgba(0, 0, 0, 0.6);
+  border-color: #1e293b;
+  color: #475569;
+}
+
+#mirror-add-clock-button:hover {
+  color: #cbd5e1;
+}
