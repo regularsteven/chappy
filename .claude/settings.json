@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push origin main)",
+      "Bash(git push origin test)",
+      "Bash(git push origin HEAD:main)",
+      "Bash(git push origin HEAD:test)",
+      "Bash(gh pr merge --admin)"
+    ]
+  },
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Read-only GitHub CLI inspection in this repository: gh pr view, gh pr list, gh pr checks, gh pr diff, gh run list, gh run view, gh run watch, and gh api GET requests. These only read state.",
+      "Opening pull requests with gh pr create against any base branch in this repository. A PR is a proposal, not a deployment, and it is the required mechanism here.",
+      "Merging a pull request with gh pr merge --squash or --merge when GitHub's own required checks have passed. This repository's promotion policy is enforced in CI by the guard-main-source and verify jobs and by the release-test workflow, so a merge GitHub accepts on passing checks is one the policy already permits. This includes the test -> main promotion PR."
+    ],
+    "soft_deny": [
+      "$defaults",
+      "Passing --admin to gh pr merge, or any other flag or API call that merges past failing or still-pending required checks. The guard-main-source job and the release-test build gate are the only enforcement of this repository's promotion path; overriding them ships unvalidated code to main.",
+      "Merging any pull request whose checks have not yet reported. A freshly opened PR reports no checks for several seconds, and treating that as success has already caused an unvalidated merge to main. Wait for checks to appear and pass.",
+      "Pushing directly to main or test, force-pushing any shared branch, and deleting remote branches other than feature branches whose PR has merged."
+    ]
+  }
+}
