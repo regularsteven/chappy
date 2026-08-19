@@ -10,6 +10,10 @@ const VUE_UPDATES_DIR = path.join(PROJECT_ROOT, 'vue-updates');
 const CHAPPY_DIR = path.join(os.homedir(), '.chappy');
 const RENDERER_PENDING_DIR = path.join(CHAPPY_DIR, 'renderer-pending');
 const GITHUB_REPO = 'regularsteven/chappy';
+// Published update URLs must point at a branch that outlives the build. Feature
+// branches are deleted after merge, which silently 404s every bundle whose URL
+// was baked from one. Pin to a long-lived branch; override only for testing.
+const PUBLISH_BRANCH = process.env.CHAPPY_PUBLISH_BRANCH || 'main';
 
 const run = (command, args, options = {}) => {
   const result = spawnSync(command, args, { encoding: 'utf8', ...options });
@@ -63,7 +67,7 @@ fs.writeFileSync(
 fs.mkdirSync(VUE_UPDATES_DIR, { recursive: true });
 const zipFileName = `chappy-vue-${hash}.zip`;
 const zipFilePath = path.join(VUE_UPDATES_DIR, zipFileName);
-const zipUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/${branch}/vue-updates/${zipFileName}`;
+const zipUrl = `https://raw.githubusercontent.com/${GITHUB_REPO}/${PUBLISH_BRANCH}/vue-updates/${zipFileName}`;
 
 if (fs.existsSync(zipFilePath)) fs.rmSync(zipFilePath, { force: true });
 
@@ -84,7 +88,8 @@ fs.writeFileSync(
 
 console.log(`✅ Vue update built: ${zipFilePath}`);
 console.log(`   Hash: ${hash}`);
-console.log(`   Branch: ${branch}`);
+console.log(`   Built from: ${branch}`);
+console.log(`   Published on: ${PUBLISH_BRANCH}`);
 console.log(`   Manifest: ${path.join(VUE_UPDATES_DIR, 'manifest.json')}`);
 
 fs.mkdirSync(CHAPPY_DIR, { recursive: true });
