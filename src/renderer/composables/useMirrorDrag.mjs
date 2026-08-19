@@ -13,18 +13,25 @@ export function useMirrorDrag({ getRect, getBounds, minWidth, minHeight, onStart
   let startRect = null;
   let bounds = null;
 
-  const clampRect = (rect) => {
-    const maxWidth = bounds ? Math.max(minWidth, bounds.width) : rect.width;
-    const maxHeight = bounds ? Math.max(minHeight, bounds.height) : rect.height;
-    const width = Math.min(Math.max(rect.width, minWidth), maxWidth);
-    const height = Math.min(Math.max(rect.height, minHeight), maxHeight);
-    const maxX = bounds ? Math.max(0, bounds.width - width) : rect.x;
-    const maxY = bounds ? Math.max(0, bounds.height - height) : rect.y;
+  // Resizing must cap size while keeping the origin fixed; moving must clamp
+  // the origin while keeping the size fixed — mixing the two makes a resize
+  // against the canvas edge drag the window toward 0,0.
+  const clampRect = (rect, mode) => {
+    if (!bounds) {
+      return { ...rect };
+    }
+    if (mode === 'resize') {
+      const width = Math.min(Math.max(rect.width, minWidth), Math.max(minWidth, bounds.width - rect.x));
+      const height = Math.min(Math.max(rect.height, minHeight), Math.max(minHeight, bounds.height - rect.y));
+      return { x: rect.x, y: rect.y, width, height };
+    }
+    const maxX = Math.max(0, bounds.width - rect.width);
+    const maxY = Math.max(0, bounds.height - rect.height);
     return {
       x: Math.min(Math.max(rect.x, 0), maxX),
       y: Math.min(Math.max(rect.y, 0), maxY),
-      width,
-      height,
+      width: rect.width,
+      height: rect.height,
     };
   };
 
@@ -37,7 +44,8 @@ export function useMirrorDrag({ getRect, getBounds, minWidth, minHeight, onStart
     liveRect.value = clampRect(
       dragMode.value === 'move'
         ? { ...startRect, x: startRect.x + deltaX, y: startRect.y + deltaY }
-        : { ...startRect, width: startRect.width + deltaX, height: startRect.height + deltaY }
+        : { ...startRect, width: startRect.width + deltaX, height: startRect.height + deltaY },
+      dragMode.value
     );
   };
 

@@ -8,7 +8,7 @@
     <p class="clock-widget-time text-6xl font-extralight tabular-nums leading-none">{{ timeLabel }}</p>
     <p class="clock-widget-caption mt-2 text-xs font-semibold uppercase tracking-[0.25em]">{{ caption }}</p>
     <div
-      class="clock-widget-controls absolute right-2 top-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100"
+      class="clock-widget-controls absolute right-2 top-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100"
     >
       <select
         v-model="timeZoneModel"

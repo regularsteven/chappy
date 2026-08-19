@@ -808,45 +808,51 @@
           ref="mirrorCanvasRef"
           class="mirror-canvas relative flex-1 overflow-hidden"
         >
-          <MirrorWindow
-            v-for="tab in mirrorOpenTabs"
-            :key="`mirror-window-${tab.id}`"
-            :title="tab.title"
-            :icon="resolveIcon(tab.icon)"
-            :rect="tab.mirrorWindow"
-            :active="activeTabId === tab.id"
-            :min-width="MIRROR_WINDOW_MIN_WIDTH"
-            :min-height="MIRROR_WINDOW_MIN_HEIGHT"
-            @focus="focusMirrorTab(tab.id)"
-            @close="closeMirrorWindow(tab.id)"
-            @update:rect="(rect) => updateMirrorWindowRect(tab.id, rect)"
-          >
-            <webview
-              :id="`mirror-webview-${tab.id}`"
-              :ref="(element) => setMirrorWebviewRef(tab.id, element)"
-              :src="resolveLaunchUrl(tab)"
-              :partition="resolveWebviewPartition(tab)"
-              allowpopups
-              class="h-full w-full border-0"
-              @did-start-navigation="(event) => handleWebviewNavigationTrace(tab.id, 'did-start-navigation', event)"
-              @did-redirect-navigation="(event) => handleWebviewNavigationTrace(tab.id, 'did-redirect-navigation', event)"
-              @did-navigate="(event) => handleWebViewNavigationForTab(tab.id, event)"
-              @did-navigate-in-page="(event) => handleWebViewInPageNavigationForTab(tab.id, event)"
-              @did-fail-load="(event) => handleWebviewNavigationFailure(tab.id, event)"
-              @dom-ready="() => handleWebviewDomReady(tab.id)"
-              @page-title-updated="(event) => handleWebviewTitleUpdatedForTab(tab.id, event)"
-            ></webview>
-          </MirrorWindow>
+<!-- The isolate wrapper contains window/widget z-indexes in their own stacking
+               context, so persisted z values can never climb above app chrome (toasts,
+               the add-clock button, drag shields). -->
+          <div class="absolute inset-0 isolate">
+            <MirrorWindow
+              v-for="tab in mirrorOpenTabs"
+              :key="`mirror-window-${tab.id}`"
+              :title="tab.title"
+              :icon="resolveIcon(tab.icon)"
+              :rect="tab.mirrorWindow"
+              :active="activeTabId === tab.id"
+              :min-width="MIRROR_WINDOW_MIN_WIDTH"
+              :min-height="MIRROR_WINDOW_MIN_HEIGHT"
+              @focus="focusMirrorTab(tab.id)"
+              @close="closeMirrorWindow(tab.id)"
+              @update:rect="(rect) => updateMirrorWindowRect(tab.id, rect)"
+            >
+              <webview
+                :id="`mirror-webview-${tab.id}`"
+                :ref="(element) => setMirrorWebviewRef(tab.id, element)"
+                :src="resolveMirrorWebviewSrc(tab)"
+                :partition="resolveWebviewPartition(tab)"
+                allowpopups
+                class="h-full w-full border-0"
+                @focus="() => focusMirrorTab(tab.id)"
+                @did-start-navigation="(event) => handleWebviewNavigationTrace(tab.id, 'did-start-navigation', event)"
+                @did-redirect-navigation="(event) => handleWebviewNavigationTrace(tab.id, 'did-redirect-navigation', event)"
+                @did-navigate="(event) => handleWebViewNavigationForTab(tab.id, event)"
+                @did-navigate-in-page="(event) => handleWebViewInPageNavigationForTab(tab.id, event)"
+                @did-fail-load="(event) => handleWebviewNavigationFailure(tab.id, event)"
+                @dom-ready="() => handleWebviewDomReady(tab.id)"
+                @page-title-updated="(event) => handleWebviewTitleUpdatedForTab(tab.id, event)"
+              ></webview>
+            </MirrorWindow>
 
-          <ClockWidget
-            v-for="widget in mirrorWidgets"
-            :key="widget.id"
-            :widget="widget"
-            @focus="focusMirrorWidget(widget.id)"
-            @remove="removeMirrorWidget(widget.id)"
-            @update:rect="(rect) => updateMirrorWidgetRect(widget.id, rect)"
-            @update:time-zone="(zone) => setMirrorWidgetTimeZone(widget.id, zone)"
-          />
+            <ClockWidget
+              v-for="widget in mirrorWidgets"
+              :key="widget.id"
+              :widget="widget"
+              @focus="focusMirrorWidget(widget.id)"
+              @remove="removeMirrorWidget(widget.id)"
+              @update:rect="(rect) => updateMirrorWidgetRect(widget.id, rect)"
+              @update:time-zone="(zone) => setMirrorWidgetTimeZone(widget.id, zone)"
+            />
+          </div>
 
           <p
             v-if="!mirrorOpenTabs.length && !mirrorWidgets.length"
@@ -859,7 +865,7 @@
             id="mirror-add-clock-button"
             type="button"
             title="Add clock"
-            class="absolute bottom-4 right-4 z-[500] flex h-9 w-9 items-center justify-center rounded-full border text-lg leading-none opacity-40 transition hover:opacity-100"
+            class="absolute bottom-4 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border text-lg leading-none opacity-40 transition hover:opacity-100"
             @click="addClockWidget"
           >
             +
@@ -980,6 +986,9 @@ const isMirrorMode = computed(() => displayMode.value === 'mirror');
 const mirrorWidgets = ref([]);
 const mirrorCanvasRef = ref(null);
 const mirrorWebviewRefs = new Map();
+// Launch URLs are snapshotted per webview mount: binding :src reactively would
+// re-navigate the guest every time lastUrl updates (double loads, SPA reloads).
+const mirrorLaunchUrls = new Map();
 const MIRROR_WINDOW_MIN_WIDTH = 320;
 const MIRROR_WINDOW_MIN_HEIGHT = 240;
 const MIRROR_WINDOW_DEFAULT_WIDTH = 760;
@@ -1109,13 +1118,18 @@ const isLaunchMode = (value) => launchModeOptions.includes(value);
 
 const resolveIconById = (iconId) => iconById[iconId] || defaultIcon;
 const resolveIcon = (icon) => icon || defaultIcon;
-const effectiveTheme = computed(() =>
-  themePreference.value === 'system'
+const effectiveTheme = computed(() => {
+  // Mirror is black-only: forcing dark keeps light-theme rules and template
+  // conditionals from lighting up pixels while the mode is active.
+  if (isMirrorMode.value) {
+    return 'dark';
+  }
+  return themePreference.value === 'system'
     ? systemPrefersDark.value
       ? 'dark'
       : 'light'
-    : themePreference.value
-);
+    : themePreference.value;
+});
 
 const prefersDarkMediaQuery =
   typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -1471,6 +1485,7 @@ const loadConfig = async () => {
     if (shouldOpenServicesOnLaunch && preserveTabMemory.value) {
       preloadAllServiceTabs();
     }
+    normalizeMirrorZOrder();
   } catch (error) {
     console.error('Failed to load Chappy config.', error);
   } finally {
@@ -1527,7 +1542,19 @@ const serviceAddLabel = (serviceId) => (serviceCountByIconId.value[serviceId] > 
 const resolveWebviewPartition = (tab) => `persist:${tab?.partition || tab?.id || 'tab'}`;
 const activeTabWebviewPartition = computed(() => resolveWebviewPartition(activeTab.value));
 
-const mirrorOpenTabs = computed(() => tabs.value.filter((tab) => tab.mirrorWindow?.open));
+// Sorted by id so reordering tabs never reorders the keyed v-for: moving a
+// <webview> element in the DOM reloads its guest. Stacking comes from z-index,
+// so DOM order is irrelevant visually.
+const mirrorOpenTabs = computed(() =>
+  tabs.value.filter((tab) => tab.mirrorWindow?.open).sort((a, b) => a.id.localeCompare(b.id))
+);
+
+const resolveMirrorWebviewSrc = (tab) => {
+  if (!mirrorLaunchUrls.has(tab.id)) {
+    mirrorLaunchUrls.set(tab.id, resolveLaunchUrl(tab));
+  }
+  return mirrorLaunchUrls.get(tab.id);
+};
 
 const getMirrorCanvasBounds = () => {
   const el = mirrorCanvasRef.value;
@@ -1566,12 +1593,26 @@ const createMirrorWindowRect = () => {
 };
 
 const openMirrorWindowForTab = (tabId) => {
-  const z = highestMirrorZ() + 1;
   updateTabById(tabId, (tab) => {
-    const rect = tab.mirrorWindow
-      ? clampRectToCanvas(tab.mirrorWindow, MIRROR_WINDOW_MIN_WIDTH, MIRROR_WINDOW_MIN_HEIGHT)
+    const top = highestMirrorZ();
+    const existing = tab.mirrorWindow;
+    const rect = existing
+      ? clampRectToCanvas(existing, MIRROR_WINDOW_MIN_WIDTH, MIRROR_WINDOW_MIN_HEIGHT)
       : createMirrorWindowRect();
-    return { ...tab, mirrorWindow: { ...rect, z, open: true } };
+    // Already open and on top: only re-clamp, so repeated sidebar clicks do not
+    // inflate the persisted z counter.
+    if (existing?.open && existing.z === top) {
+      if (
+        rect.x === existing.x &&
+        rect.y === existing.y &&
+        rect.width === existing.width &&
+        rect.height === existing.height
+      ) {
+        return tab;
+      }
+      return { ...tab, mirrorWindow: { ...existing, ...rect } };
+    }
+    return { ...tab, mirrorWindow: { ...rect, z: top + 1, open: true } };
   });
 };
 
@@ -1596,9 +1637,21 @@ const closeMirrorWindow = (tabId) => {
 
 const updateMirrorWindowRect = (tabId, rect) => {
   const clamped = clampRectToCanvas(rect, MIRROR_WINDOW_MIN_WIDTH, MIRROR_WINDOW_MIN_HEIGHT);
-  updateTabById(tabId, (tab) =>
-    tab.mirrorWindow ? { ...tab, mirrorWindow: { ...tab.mirrorWindow, ...clamped } } : tab
-  );
+  updateTabById(tabId, (tab) => {
+    const existing = tab.mirrorWindow;
+    if (!existing) {
+      return tab;
+    }
+    if (
+      existing.x === clamped.x &&
+      existing.y === clamped.y &&
+      existing.width === clamped.width &&
+      existing.height === clamped.height
+    ) {
+      return tab;
+    }
+    return { ...tab, mirrorWindow: { ...existing, ...clamped } };
+  });
 };
 
 const setMirrorWebviewRef = (tabId, element) => {
@@ -1607,6 +1660,9 @@ const setMirrorWebviewRef = (tabId, element) => {
     return;
   }
   mirrorWebviewRefs.delete(tabId);
+  // The webview unmounted (window closed, mode switched, or tab removed):
+  // drop the src snapshot so a future mount resolves a fresh launch URL.
+  mirrorLaunchUrls.delete(tabId);
 };
 
 const CLOCK_WIDGET_APPROX_WIDTH = 280;
@@ -1654,8 +1710,12 @@ const focusMirrorWidget = (widgetId) => {
 
 const updateMirrorWidgetRect = (widgetId, rect) => {
   const clamped = clampRectToCanvas(rect, 0, 0);
-  mirrorWidgets.value = mirrorWidgets.value.map((widget) =>
-    widget.id === widgetId ? { ...widget, x: clamped.x, y: clamped.y } : widget
+  const widget = mirrorWidgets.value.find((candidate) => candidate.id === widgetId);
+  if (!widget || (widget.x === clamped.x && widget.y === clamped.y)) {
+    return;
+  }
+  mirrorWidgets.value = mirrorWidgets.value.map((candidate) =>
+    candidate.id === widgetId ? { ...candidate, x: clamped.x, y: clamped.y } : candidate
   );
 };
 
@@ -1663,6 +1723,77 @@ const setMirrorWidgetTimeZone = (widgetId, timeZone) => {
   mirrorWidgets.value = mirrorWidgets.value.map((widget) =>
     widget.id === widgetId ? { ...widget, timeZone: typeof timeZone === 'string' ? timeZone : '' } : widget
   );
+};
+
+// Persisted geometry can reference a canvas that no longer exists (smaller
+// display, resized window). Re-clamp everything whenever the canvas appears or
+// the app window resizes, so no window or widget is stranded off-canvas.
+const clampAllMirrorItems = () => {
+  if (!mirrorCanvasRef.value) {
+    return;
+  }
+  tabs.value.forEach((tab) => {
+    if (tab.mirrorWindow) {
+      updateMirrorWindowRect(tab.id, tab.mirrorWindow);
+    }
+  });
+  mirrorWidgets.value.forEach((widget) => {
+    updateMirrorWidgetRect(widget.id, {
+      x: widget.x,
+      y: widget.y,
+      width: CLOCK_WIDGET_APPROX_WIDTH,
+      height: CLOCK_WIDGET_APPROX_HEIGHT,
+    });
+  });
+};
+
+watch(
+  mirrorCanvasRef,
+  (canvas) => {
+    if (canvas) {
+      clampAllMirrorItems();
+    }
+  },
+  { flush: 'post' }
+);
+
+let mirrorResizeTimeout = null;
+const handleWindowResize = () => {
+  if (!isMirrorMode.value) {
+    return;
+  }
+  if (mirrorResizeTimeout) {
+    clearTimeout(mirrorResizeTimeout);
+  }
+  mirrorResizeTimeout = setTimeout(clampAllMirrorItems, 200);
+};
+
+// Persisted z values grow with every open/focus; compacting them to 1..N at
+// load keeps them well below fixed chrome layers for the life of the config.
+const normalizeMirrorZOrder = () => {
+  const items = [];
+  tabs.value.forEach((tab) => {
+    if (tab.mirrorWindow) {
+      items.push({ key: `tab:${tab.id}`, z: tab.mirrorWindow.z || 0 });
+    }
+  });
+  mirrorWidgets.value.forEach((widget) => {
+    items.push({ key: `widget:${widget.id}`, z: widget.z || 0 });
+  });
+  if (!items.length) {
+    return;
+  }
+  items.sort((a, b) => a.z - b.z);
+  const zByKey = new Map(items.map((item, index) => [item.key, index + 1]));
+  tabs.value = tabs.value.map((tab) =>
+    tab.mirrorWindow
+      ? { ...tab, mirrorWindow: { ...tab.mirrorWindow, z: zByKey.get(`tab:${tab.id}`) } }
+      : tab
+  );
+  mirrorWidgets.value = mirrorWidgets.value.map((widget) => ({
+    ...widget,
+    z: zByKey.get(`widget:${widget.id}`),
+  }));
 };
 
 const newTab = reactive({
@@ -2021,6 +2152,9 @@ const addService = (service) => {
     markTabLoaded(id);
   }
   activeTabId.value = id;
+  if (isMirrorMode.value) {
+    openMirrorWindowForTab(id);
+  }
 };
 
 const addTabFromUrl = (url, title) => {
@@ -2048,6 +2182,9 @@ const addTabFromUrl = (url, title) => {
     markTabLoaded(id);
   }
   activeTabId.value = id;
+  if (isMirrorMode.value) {
+    openMirrorWindowForTab(id);
+  }
 
   void (async () => {
     const hasApi = !!chappyApi?.fetchIconFromUrl;
@@ -2124,6 +2261,9 @@ const addTab = () => {
     markTabLoaded(id);
   }
   activeTabId.value = id;
+  if (isMirrorMode.value) {
+    openMirrorWindowForTab(id);
+  }
 
   void (async () => {
     const hasApi = !!chappyApi?.fetchIconFromUrl;
@@ -2227,12 +2367,6 @@ watch([tabs, activeTabId, themePreference, displayMode, mirrorWidgets, useSystem
   void persistConfig();
 }, { deep: true });
 
-watch(displayMode, (mode) => {
-  if (mode === 'mirror' && activeTabId.value !== 'chappy') {
-    openMirrorWindowForTab(activeTabId.value);
-  }
-});
-
 const handleWebViewNavigationForTab = (tabId, event) => {
   if (tabId === 'chappy') {
     return;
@@ -2296,6 +2430,7 @@ const handleRestartToApply = () => {
 };
 
 onMounted(() => {
+  window.addEventListener('resize', handleWindowResize);
   handleSystemThemeChange();
   if (prefersDarkMediaQuery) {
     if (typeof prefersDarkMediaQuery.addEventListener === 'function') {
@@ -2320,6 +2455,11 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleWindowResize);
+  if (mirrorResizeTimeout) {
+    clearTimeout(mirrorResizeTimeout);
+    mirrorResizeTimeout = null;
+  }
   if (typeof chappyApi?.setBadgeCount === 'function') {
     void chappyApi.setBadgeCount(0).catch(() => {});
   }
