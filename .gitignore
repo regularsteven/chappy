@@ -11,3 +11,6 @@ yarn-debug.log*
 yarn-error.log*
 .env
 *.local
+
+# Claude Code personal overrides (project settings.json is committed)
+.claude/settings.local.json
