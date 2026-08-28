@@ -1,8 +1,8 @@
 {
   "id": "weather",
   "name": "Weather",
-  "version": "0.1.0",
-  "description": "Current temperature, today's high, and a 3 day forecast for a chosen city.",
+  "version": "0.2.0",
+  "description": "Current conditions with today's high and low, plus an optional 3 or 5 day forecast for a chosen city.",
   "entry": "index.html",
   "icon": "icon.svg",
   "author": "Chappy",

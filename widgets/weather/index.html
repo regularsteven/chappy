@@ -6,17 +6,27 @@
 <title>Weather</title>
 <style>
   :root {
-    --text-strong: #e2e8f0;
-    --text: #cbd5e1;
-    --text-soft: #94a3b8;
-    --text-muted: #475569;
-    --line: rgba(51, 65, 85, 0.55);
-    --field-bg: #020617;
-    --field-border: rgba(51, 65, 85, 0.8);
+    /* Bright, saturated accents: this renders behind mirror glass, which eats
+       a lot of light — contrast beats subtlety here. */
+    --temp: #f8fafc;
+    --temp-cold: #7dd3fc;
+    --temp-hot: #fbbf24;
+    --hi: #fbbf24;
+    --lo: #38bdf8;
+    --place: #7dd3fc;
+    --text: #e2e8f0;
+    --text-soft: #cbd5e1;
+    --text-muted: #94a3b8;
+    --line: rgba(148, 163, 184, 0.35);
+    --field-bg: #0b1220;
+    --field-border: rgba(100, 116, 139, 0.8);
     --accent: #38bdf8;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; }
+  /* Every dimension below is in rem, so the whole layout scales with the
+     widget: resizing the frame resizes the data. */
+  html { font-size: clamp(9px, 4vmin, 26px); }
   body {
     background: #000000;
     color: var(--text);
@@ -25,95 +35,116 @@
     -webkit-user-select: none;
     user-select: none;
   }
-  .pane { display: none; height: 100%; padding: 14px 18px 12px; flex-direction: column; }
+  .pane { display: none; height: 100%; padding: 1.2rem 1.5rem 1rem; flex-direction: column; }
   .pane.active { display: flex; }
 
   /* ---- weather display ---- */
-  .place-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .place-row { display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem; }
   .place {
-    font-size: 11px; font-weight: 600; letter-spacing: 0.22em;
-    text-transform: uppercase; color: var(--text-muted);
+    font-size: 0.95rem; font-weight: 700; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--place);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .gear {
-    background: none; border: none; color: var(--text-muted); font-size: 13px;
-    cursor: pointer; padding: 2px 4px; border-radius: 6px; line-height: 1;
+    background: none; border: none; color: var(--text-muted); font-size: 1.1rem;
+    cursor: pointer; padding: 0.15rem 0.3rem; border-radius: 0.4rem; line-height: 1;
     opacity: 0; transition: opacity 140ms ease, color 140ms ease;
   }
   body:hover .gear { opacity: 1; }
-  .gear:hover { color: var(--text-strong); }
+  .gear:hover { color: var(--temp); }
 
-  /* Both autos split the free vertical space, centering the current block
-     between the header and the forecast at any widget height. */
-  .now { display: flex; align-items: center; gap: 14px; margin-top: auto; min-height: 0; }
-  .now-temp { font-size: clamp(40px, 22vmin, 68px); font-weight: 200; line-height: 1; color: var(--text-strong); font-variant-numeric: tabular-nums; }
-  .now-side { display: flex; flex-direction: column; gap: 4px; }
-  .now-glyph { font-size: clamp(18px, 9vmin, 26px); color: var(--text-soft); line-height: 1; }
-  .now-high { font-size: 12px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-muted); }
-  .now-high b { color: var(--text-soft); font-weight: 600; }
+  .now { display: flex; align-items: center; gap: 1.1rem; margin-top: auto; min-height: 0; }
+  .pane.no-forecast .now { margin-bottom: auto; }
+  .now-temp {
+    font-size: 4rem; font-weight: 200; line-height: 1;
+    color: var(--temp); font-variant-numeric: tabular-nums;
+  }
+  .now-temp.cold { color: var(--temp-cold); }
+  .now-temp.hot { color: var(--temp-hot); }
+  .now-side { display: flex; flex-direction: column; gap: 0.35rem; }
+  .now-glyph { font-size: 2rem; line-height: 1; }
+  .now-range { font-size: 0.95rem; font-weight: 700; letter-spacing: 0.08em; font-variant-numeric: tabular-nums; }
+  .now-range .hi { color: var(--hi); }
+  .now-range .lo { color: var(--lo); margin-left: 0.55rem; }
+  .now-range .tag { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.14em; color: var(--text-muted); margin-right: 0.2rem; }
 
   .forecast {
-    margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line);
-    display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;
+    margin-top: auto; padding-top: 0.8rem; border-top: 1px solid var(--line);
+    display: grid; gap: 0.5rem;
   }
+  /* display:grid above outranks the UA [hidden] rule — restate it. */
+  .forecast[hidden] { display: none; }
   .day { text-align: center; min-width: 0; }
-  .day-name { font-size: 11px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-muted); }
-  .day-glyph { font-size: 18px; margin: 5px 0 4px; color: var(--text-soft); line-height: 1; }
-  .day-temps { font-size: 12px; color: var(--text-soft); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .day-temps .lo { color: var(--text-muted); }
+  .day-name { font-size: 0.85rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-soft); }
+  .day-glyph { font-size: 1.5rem; margin: 0.4rem 0 0.3rem; line-height: 1; }
+  .day-temps { font-size: 0.9rem; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .day-temps .hi { color: var(--hi); }
+  .day-temps .lo { color: var(--lo); margin-left: 0.35rem; }
 
-  .status { margin: auto; text-align: center; font-size: 12px; color: var(--text-muted); letter-spacing: 0.08em; }
+  .status { margin: auto; text-align: center; font-size: 0.95rem; color: var(--text-muted); letter-spacing: 0.08em; }
   .status button {
-    display: block; margin: 10px auto 0; background: none; border: 1px solid var(--field-border);
-    color: var(--text-soft); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
-    padding: 5px 12px; border-radius: 999px; cursor: pointer;
+    display: block; margin: 0.8rem auto 0; background: none; border: 1px solid var(--field-border);
+    color: var(--text-soft); font-size: 0.8rem; letter-spacing: 0.14em; text-transform: uppercase;
+    padding: 0.4rem 1rem; border-radius: 999px; cursor: pointer;
   }
-  .status button:hover { color: var(--text-strong); border-color: var(--text-muted); }
+  .status button:hover { color: var(--temp); border-color: var(--accent); }
 
   /* ---- settings ---- */
-  .settings-title { font-size: 11px; font-weight: 600; letter-spacing: 0.22em; text-transform: uppercase; color: var(--text-muted); }
-  .field { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
-  .field label { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-muted); }
-  select, input[type="text"] {
+  .settings-title { font-size: 0.85rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--place); }
+  .field { margin-top: 0.8rem; display: flex; flex-direction: column; gap: 0.35rem; }
+  .field label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-muted); }
+  input[type="text"] {
     width: 100%; background: var(--field-bg); border: 1px solid var(--field-border);
-    color: var(--text); font-size: 13px; padding: 6px 8px; border-radius: 8px; outline: none;
+    color: var(--text); font-size: 0.95rem; padding: 0.45rem 0.6rem; border-radius: 0.6rem; outline: none;
   }
-  select:focus, input:focus { border-color: var(--accent); }
-  .search-row { display: flex; gap: 6px; }
+  input:focus { border-color: var(--accent); }
+  .search-row { display: flex; gap: 0.45rem; }
   .search-row input { flex: 1; min-width: 0; }
   .search-row button {
     background: var(--field-bg); border: 1px solid var(--field-border); color: var(--text-soft);
-    font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
-    padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    font-size: 0.8rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 0.45rem 0.9rem; border-radius: 0.6rem; cursor: pointer;
   }
-  .search-row button:hover { color: var(--text-strong); }
-  .results { margin-top: 10px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 4px; }
-  .results .hint { font-size: 11px; color: var(--text-muted); }
+  .search-row button:hover { color: var(--temp); border-color: var(--accent); }
+  .days-row { display: flex; gap: 0.45rem; }
+  .days-option {
+    flex: 1; background: var(--field-bg); border: 1px solid var(--field-border);
+    color: var(--text-soft); font-size: 0.8rem; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; padding: 0.45rem 0.3rem; border-radius: 0.6rem; cursor: pointer;
+    transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+  }
+  .days-option:hover { color: var(--temp); }
+  .days-option.active { color: #0b1220; background: var(--accent); border-color: var(--accent); }
+  .results { margin-top: 0.8rem; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 0.3rem; }
+  .results .hint { font-size: 0.85rem; color: var(--text-muted); }
   .result {
-    text-align: left; background: none; border: 1px solid transparent; border-radius: 8px;
-    color: var(--text-soft); font-size: 12px; padding: 6px 8px; cursor: pointer;
+    text-align: left; background: none; border: 1px solid transparent; border-radius: 0.6rem;
+    color: var(--text-soft); font-size: 0.9rem; padding: 0.45rem 0.6rem; cursor: pointer;
   }
-  .result:hover { border-color: var(--field-border); color: var(--text-strong); }
+  .result:hover { border-color: var(--field-border); color: var(--temp); }
   .result small { color: var(--text-muted); }
-  .settings-footer { margin-top: 8px; display: flex; justify-content: flex-end; }
+  .settings-footer { margin-top: 0.6rem; display: flex; justify-content: flex-end; }
   .settings-footer button {
-    background: none; border: none; color: var(--text-muted); font-size: 11px;
-    letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer; padding: 4px;
+    background: none; border: none; color: var(--text-muted); font-size: 0.8rem;
+    letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer; padding: 0.3rem;
   }
-  .settings-footer button:hover { color: var(--text-strong); }
+  .settings-footer button:hover { color: var(--temp); }
 </style>
 </head>
 <body>
   <section id="weather-pane" class="pane">
     <div class="place-row">
       <p class="place" id="place-label">—</p>
-      <button type="button" class="gear" id="open-settings" title="Change location">⚙</button>
+      <button type="button" class="gear" id="open-settings" title="Widget settings">⚙</button>
     </div>
     <div class="now" id="now-row">
       <p class="now-temp" id="now-temp">--°</p>
       <div class="now-side">
         <p class="now-glyph" id="now-glyph"></p>
-        <p class="now-high">High <b id="today-high">--°</b></p>
+        <p class="now-range">
+          <span class="tag">H</span><span class="hi" id="today-high">--°</span>
+          <span class="lo"><span class="tag">L</span><span id="today-low">--°</span></span>
+        </p>
       </div>
     </div>
     <p class="status" id="weather-status" hidden></p>
@@ -121,21 +152,25 @@
   </section>
 
   <section id="settings-pane" class="pane">
-    <p class="settings-title">Choose location</p>
-    <div class="field">
-      <label for="country">Country</label>
-      <select id="country"><option value="">Any country</option></select>
-    </div>
+    <p class="settings-title">Weather settings</p>
     <div class="field">
       <label for="city">City</label>
       <div class="search-row">
-        <input id="city" type="text" placeholder="Berlin" autocomplete="off" />
+        <input id="city" type="text" placeholder="Prague" autocomplete="off" />
         <button type="button" id="search">Search</button>
       </div>
     </div>
-    <div class="results" id="results"><p class="hint">Pick a country (optional), type a city, then search.</p></div>
+    <div class="field">
+      <label id="days-label">Forecast days</label>
+      <div class="days-row" id="days-options" role="group" aria-labelledby="days-label">
+        <button type="button" class="days-option" data-days="0">Today only</button>
+        <button type="button" class="days-option" data-days="3">3 days</button>
+        <button type="button" class="days-option" data-days="5">5 days</button>
+      </div>
+    </div>
+    <div class="results" id="results"><p class="hint">Type a city, then search.</p></div>
     <div class="settings-footer">
-      <button type="button" id="cancel-settings" hidden>Cancel</button>
+      <button type="button" id="cancel-settings" hidden>Done</button>
     </div>
   </section>
 
@@ -147,6 +182,8 @@
   var instanceId = params.get('instance') || 'default';
   var STORE_KEY = 'chappy-weather:' + instanceId;
   var REFRESH_MS = 30 * 60 * 1000;
+  var DAY_CHOICES = [0, 3, 5];
+  var DEFAULT_DAYS = 3;
 
   var weatherPane = document.getElementById('weather-pane');
   var settingsPane = document.getElementById('settings-pane');
@@ -155,26 +192,38 @@
   var nowTemp = document.getElementById('now-temp');
   var nowGlyph = document.getElementById('now-glyph');
   var todayHigh = document.getElementById('today-high');
+  var todayLow = document.getElementById('today-low');
   var forecastEl = document.getElementById('forecast');
   var statusEl = document.getElementById('weather-status');
-  var countrySelect = document.getElementById('country');
   var cityInput = document.getElementById('city');
   var searchButton = document.getElementById('search');
   var resultsEl = document.getElementById('results');
   var cancelButton = document.getElementById('cancel-settings');
+  var dayButtons = Array.prototype.slice.call(document.querySelectorAll('.days-option'));
 
   var refreshTimer = null;
+  /* Days choice made in settings before a location exists; merged into the
+     saved state once a city is picked. */
+  var pendingDays = DEFAULT_DAYS;
 
-  /* WMO weather codes -> glyphs. Only codepoints whose text presentation
-     Chromium honors — ⛅/☔/⚡ ignore U+FE0E and force color emoji. */
+  /* WMO weather codes -> color emoji. Bright, glanceable, and distinct per
+     condition — this widget sits behind mirror glass, so color carries. */
   function glyphFor(code) {
-    if (code === 0 || code === 1) return '☀︎';
-    if (code === 2 || code === 3) return '☁︎';
-    if (code === 45 || code === 48) return '≡';
-    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return '☂︎';
-    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return '❄︎';
-    if (code >= 95) return '↯';
-    return '☁︎';
+    if (code === 0) return '☀️';
+    if (code === 1) return '🌤️';
+    if (code === 2) return '⛅';
+    if (code === 3) return '☁️';
+    if (code === 45 || code === 48) return '🌫️';
+    if (code >= 51 && code <= 55) return '🌦️';
+    if (code === 56 || code === 57 || (code >= 61 && code <= 67)) return '🌧️';
+    if ((code >= 71 && code <= 77) || code === 85 || code === 86) return '🌨️';
+    if (code >= 80 && code <= 82) return '🌦️';
+    if (code >= 95) return '⛈️';
+    return '☁️';
+  }
+
+  function sanitizeDays(value) {
+    return DAY_CHOICES.indexOf(value) === -1 ? DEFAULT_DAYS : value;
   }
 
   function loadSaved() {
@@ -183,14 +232,15 @@
       if (!raw) return null;
       var parsed = JSON.parse(raw);
       if (!parsed || typeof parsed.lat !== 'number' || typeof parsed.lon !== 'number') return null;
+      parsed.days = sanitizeDays(parsed.days);
       return parsed;
     } catch (error) {
       return null;
     }
   }
 
-  function save(location) {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(location)); } catch (error) {}
+  function save(state) {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (error) {}
   }
 
   function showPane(pane) {
@@ -232,6 +282,13 @@
 
   var dayFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
 
+  function temperatureClass(value) {
+    if (!isFinite(value)) return '';
+    if (value <= 5) return 'cold';
+    if (value >= 25) return 'hot';
+    return '';
+  }
+
   function renderWeather(saved, data) {
     clearStatus();
     placeLabel.textContent = saved.name + (saved.countryCode ? ' · ' + saved.countryCode.toUpperCase() : '');
@@ -241,13 +298,23 @@
     var lows = daily.temperature_2m_min || [];
     var codes = daily.weather_code || [];
     var days = daily.time || [];
+    var wantedDays = sanitizeDays(saved.days);
 
-    nowTemp.textContent = Math.round(current.temperature_2m) + '°';
+    var currentTemp = current.temperature_2m;
+    nowTemp.textContent = Math.round(currentTemp) + '°';
+    nowTemp.className = 'now-temp' + (temperatureClass(currentTemp) ? ' ' + temperatureClass(currentTemp) : '');
     nowGlyph.textContent = glyphFor(current.weather_code);
     todayHigh.textContent = highs.length ? Math.round(highs[0]) + '°' : '--°';
+    todayLow.textContent = lows.length ? Math.round(lows[0]) + '°' : '--°';
 
     forecastEl.textContent = '';
-    for (var i = 1; i <= 3 && i < days.length; i += 1) {
+    weatherPane.classList.toggle('no-forecast', wantedDays === 0);
+    forecastEl.hidden = wantedDays === 0;
+    if (wantedDays === 0) {
+      return;
+    }
+    forecastEl.style.gridTemplateColumns = 'repeat(' + wantedDays + ', 1fr)';
+    for (var i = 1; i <= wantedDays && i < days.length; i += 1) {
       var day = document.createElement('div');
       day.className = 'day';
       var name = document.createElement('p');
@@ -258,10 +325,13 @@
       glyph.textContent = glyphFor(codes[i]);
       var temps = document.createElement('p');
       temps.className = 'day-temps';
-      temps.appendChild(document.createTextNode(Math.round(highs[i]) + '° '));
+      var high = document.createElement('span');
+      high.className = 'hi';
+      high.textContent = Math.round(highs[i]) + '°';
       var low = document.createElement('span');
       low.className = 'lo';
       low.textContent = Math.round(lows[i]) + '°';
+      temps.appendChild(high);
       temps.appendChild(low);
       day.appendChild(name);
       day.appendChild(glyph);
@@ -279,7 +349,7 @@
       '&longitude=' + encodeURIComponent(saved.lon) +
       '&current=temperature_2m,weather_code' +
       '&daily=temperature_2m_max,temperature_2m_min,weather_code' +
-      '&timezone=auto&forecast_days=4';
+      '&timezone=auto&forecast_days=' + (sanitizeDays(saved.days) + 1);
     fetch(url)
       .then(function (response) {
         if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -301,33 +371,20 @@
 
   /* ---- settings ---- */
 
-  var countriesPopulated = false;
-  function populateCountries() {
-    if (countriesPopulated) return;
-    countriesPopulated = true;
-    var codes = ('AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ ' +
-      'CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR ' +
-      'GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP ' +
-      'KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT ' +
-      'MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW ' +
-      'SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ ' +
-      'UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW').split(' ');
-    var displayNames;
-    try { displayNames = new Intl.DisplayNames(['en'], { type: 'region' }); } catch (error) { displayNames = null; }
-    var entries = codes.map(function (code) {
-      var label = code;
-      if (displayNames) {
-        try { label = displayNames.of(code) || code; } catch (error) { label = code; }
-      }
-      return { code: code, label: label };
+  function syncDayButtons() {
+    dayButtons.forEach(function (button) {
+      button.classList.toggle('active', Number(button.dataset.days) === pendingDays);
     });
-    entries.sort(function (a, b) { return a.label.localeCompare(b.label); });
-    entries.forEach(function (entry) {
-      var option = document.createElement('option');
-      option.value = entry.code;
-      option.textContent = entry.label;
-      countrySelect.appendChild(option);
-    });
+  }
+
+  function setPendingDays(value) {
+    pendingDays = sanitizeDays(value);
+    syncDayButtons();
+    var saved = loadSaved();
+    if (saved && saved.days !== pendingDays) {
+      saved.days = pendingDays;
+      save(saved);
+    }
   }
 
   function renderResults(children) {
@@ -343,14 +400,15 @@
   }
 
   function chooseLocation(match) {
-    var location = {
+    var state = {
       name: match.name,
       countryCode: (match.country_code || '').toLowerCase(),
       lat: match.latitude,
-      lon: match.longitude
+      lon: match.longitude,
+      days: pendingDays
     };
-    save(location);
-    fetchWeather(location);
+    save(state);
+    fetchWeather(state);
     scheduleRefresh();
   }
 
@@ -370,14 +428,8 @@
       })
       .then(function (data) {
         var matches = data.results || [];
-        var wantedCountry = countrySelect.value;
-        if (wantedCountry) {
-          matches = matches.filter(function (match) {
-            return (match.country_code || '').toUpperCase() === wantedCountry;
-          });
-        }
         if (!matches.length) {
-          renderResults([hint('No matches' + (wantedCountry ? ' in the selected country.' : '.'))]);
+          renderResults([hint('No matches.')]);
           return;
         }
         renderResults(matches.map(function (match) {
@@ -397,15 +449,15 @@
         }));
       })
       .catch(function () {
-        renderResults([hint("Search failed — check the connection and try again.")]);
+        renderResults([hint('Search failed — check the connection and try again.')]);
       });
   }
 
   function openSettings() {
-    populateCountries();
     var saved = loadSaved();
     cancelButton.hidden = !saved;
-    if (saved && saved.countryCode) countrySelect.value = saved.countryCode.toUpperCase();
+    pendingDays = saved ? saved.days : DEFAULT_DAYS;
+    syncDayButtons();
     showPane('settings');
     cityInput.focus();
   }
@@ -413,15 +465,23 @@
   document.getElementById('open-settings').addEventListener('click', openSettings);
   cancelButton.addEventListener('click', function () {
     var saved = loadSaved();
-    if (saved) fetchWeather(saved);
+    if (saved) {
+      fetchWeather(saved);
+    }
   });
   searchButton.addEventListener('click', searchCity);
   cityInput.addEventListener('keydown', function (event) {
     if (event.key === 'Enter') searchCity();
   });
+  dayButtons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      setPendingDays(Number(button.dataset.days));
+    });
+  });
 
   var saved = loadSaved();
   if (saved) {
+    pendingDays = saved.days;
     fetchWeather(saved);
     scheduleRefresh();
   } else {
