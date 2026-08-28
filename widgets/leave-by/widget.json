@@ -1,0 +1,13 @@
+{
+  "id": "leave-by",
+  "name": "Leave By",
+  "version": "0.1.0",
+  "description": "Your next calendar event and when to leave to arrive on time, with live travel estimates.",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "author": "Chappy",
+  "tags": ["calendar", "time"],
+  "defaultSize": { "width": 420, "height": 300 },
+  "minSize": { "width": 300, "height": 210 },
+  "multiInstance": false
+}
