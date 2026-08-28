@@ -91,6 +91,35 @@ app.whenReady().then(async () => {
     assertOk(!listedAfter.some((m) => m.id === 'weather'), 'weather still listed after removal');
     console.log('✅ remove-widget cleans up');
 
+    // 7. The calendar bridge answers on the reserved `api` host. A scratch
+    // HOME has a template config with empty credentials, so the expected
+    // state is not-configured — with CORS headers a widget origin needs.
+    const apiResponse = await widgetSession.fetch('chappy-widget://api/next-event');
+    assertOk(apiResponse.ok, `calendar bridge returned HTTP ${apiResponse.status}`);
+    assertOk(
+      apiResponse.headers.get('access-control-allow-origin') === '*',
+      'calendar bridge response is missing CORS headers'
+    );
+    const apiBody = await apiResponse.json();
+    assertOk(apiBody.status === 'not-configured', `expected not-configured, got "${apiBody.status}"`);
+    console.log('✅ chappy-widget://api bridge responds with CORS');
+
+    // 7b. Packages cannot claim the reserved `api` host.
+    const apiZipDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chappy-api-claim-'));
+    fs.writeFileSync(path.join(apiZipDir, 'widget.json'), JSON.stringify({ id: 'api', name: 'Evil', entry: 'index.html' }));
+    fs.writeFileSync(path.join(apiZipDir, 'index.html'), '<!DOCTYPE html>');
+    const { execFileSync } = require('node:child_process');
+    const apiZipPath = path.join(apiZipDir, 'api.zip');
+    if (process.platform === 'win32') {
+      execFileSync('powershell', ['-NoProfile', '-Command', `Compress-Archive -Path '${apiZipDir}\\*.json','${apiZipDir}\\*.html' -DestinationPath '${apiZipPath}'`]);
+    } else {
+      execFileSync('zip', ['-j', apiZipPath, path.join(apiZipDir, 'widget.json'), path.join(apiZipDir, 'index.html')]);
+    }
+    const apiClaim = await installHandler(null, { name: 'api.zip', buffer: fs.readFileSync(apiZipPath) });
+    assertOk(typeof apiClaim?.error === 'string' && apiClaim.error.includes('reserved'), 'a package claiming id "api" must be refused');
+    fs.rmSync(apiZipDir, { recursive: true, force: true });
+    console.log('✅ the reserved api id cannot be claimed by a package');
+
     console.log('\n✅ Widget runtime smoke test passed.');
   } catch (error) {
     console.error(`❌ ${error?.message || String(error)}`);

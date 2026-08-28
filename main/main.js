@@ -5,6 +5,7 @@ const path = require('path');
 const { pathToFileURL } = require('node:url');
 const extractZip = require('extract-zip');
 const vueUpdate = require('./vue-update.js');
+const calendarService = require('./calendar-service.js');
 
 if (app.setName) {
   app.setName('Chappy');
@@ -26,8 +27,9 @@ const WIDGETS_DIR = path.join(CHAPPY_DIR, 'widgets');
 const WIDGET_SESSION_PARTITION = 'persist:chappy-widgets';
 const WIDGET_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const WIDGET_ZIP_MAX_BYTES = 20 * 1024 * 1024;
-// Ids of built-in native widgets; packages may not claim them.
-const RESERVED_WIDGET_IDS = new Set(['clock']);
+// Ids packages may not claim: built-in native widgets ('clock') and the
+// virtual host that serves the calendar backend ('api').
+const RESERVED_WIDGET_IDS = new Set(['clock', calendarService.WIDGET_API_HOST]);
 const APP_ICON_PNG = path.join(__dirname, '../resources/chappy-logo.png');
 const BADGE_MAX_DISPLAY = 9;
 let currentAppBadgeCount = 0;
@@ -866,6 +868,11 @@ const handleWidgetProtocol = (request) => {
   try {
     const url = new URL(request.url);
     const widgetId = url.hostname;
+    // The reserved `api` host is not a widget folder — it is the bridge to the
+    // main-process calendar service (see main/calendar-service.js).
+    if (widgetId === calendarService.WIDGET_API_HOST) {
+      return calendarService.handleApiRequest(request);
+    }
     if (!WIDGET_ID_PATTERN.test(widgetId)) {
       return new Response(null, { status: 400 });
     }
@@ -984,6 +991,8 @@ app.whenReady().then(() => {
       writeConfig(configState);
     });
   }
+
+  calendarService.init({ chappyDir: CHAPPY_DIR });
 
   // Widget webviews run in their own partition, whose session resolves
   // protocols independently of the default session — register on both.

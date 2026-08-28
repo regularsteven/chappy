@@ -17,7 +17,7 @@
     "build": "npm run build:vue-update",
     "build:full": "npm run build:desktop",
     "start": "npm run dev",
-    "test": "node scripts/check-tabs.mjs && node scripts/check-widgets.mjs",
+    "test": "node scripts/check-tabs.mjs && node scripts/check-widgets.mjs && node scripts/check-calendar.mjs",
     "pack:widget": "node scripts/pack-widget.mjs",
     "test:services": "node scripts/check-service-loads.mjs",
     "test:widget-runtime": "cross-env ELECTRON_RUN_AS_NODE= electron scripts/check-widget-runtime.electron.cjs",
