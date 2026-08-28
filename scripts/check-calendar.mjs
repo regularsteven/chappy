@@ -9,17 +9,23 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const {
   sanitizeCalendarConfig,
+  normalizeIcsUrl,
   isVideoCallLocation,
   normalizeGoogleEvent,
+  expandIcsEvents,
   selectActiveEvent,
   buildAgenda,
+  buildWeek,
   computeLeaveByUtc,
   isLiveDeparture,
   travelTtlMs,
   parseDurationSeconds,
   buildRouteRequestBody,
+  buildOsrmUrl,
+  buildNominatimUrl,
   normalizeGeocodeKey
 } = require('../main/calendar-service.js')._test;
+const ical = require('node-ical');
 
 // A timed event at local (hourOffsetDays, hour, minute) relative to a base day.
 const day = (offsetDays, hour, minute = 0) => new Date(2026, 7, 28 + offsetDays, hour, minute);
@@ -248,5 +254,190 @@ assert.equal(parseDurationSeconds(1234), null);
 assert.equal(sanitizeCalendarConfig({ homeCoordinates: { lat: 91, lng: 0 } }).homeCoordinates, null);
 
 assert.equal(normalizeGeocodeKey('  Vinohradská   123,\nPraha 2 '), 'vinohradská 123, praha 2');
+
+// ---- ICS URL normalization -------------------------------------------------
+
+assert.equal(
+  normalizeIcsUrl('webcal://calendar.google.com/calendar/ical/x/private-abc/basic.ics'),
+  'https://calendar.google.com/calendar/ical/x/private-abc/basic.ics',
+  'webcal:// links normalize to https'
+);
+assert.equal(normalizeIcsUrl('  https://example.com/cal.ics  '), 'https://example.com/cal.ics');
+assert.equal(normalizeIcsUrl('ftp://example.com/cal.ics'), '', 'non-http protocols are rejected');
+assert.equal(normalizeIcsUrl('not a url'), '');
+assert.equal(normalizeIcsUrl(''), '');
+
+{
+  const config = sanitizeCalendarConfig({
+    icsUrls: ['webcal://a.example/c.ics', 'garbage', 'https://b.example/c.ics', 1, 'https://c.example/1', 'https://c.example/2', 'https://c.example/3', 'https://c.example/4'],
+    homeAddress: `  Vinohradská 123 ${'x'.repeat(300)}`
+  });
+  assert.equal(config.icsUrls.length, 5, 'ics urls are capped');
+  assert.equal(config.icsUrls[0], 'https://a.example/c.ics');
+  assert.equal(config.homeAddress.length, 200, 'home address is length-capped');
+}
+
+assert.deepEqual(sanitizeCalendarConfig(null).icsUrls, [], 'icsUrls default to empty');
+
+// ---- ICS parsing and recurrence expansion ----------------------------------
+// Exercises the real node-ical parser, so a dependency upgrade that changes
+// its output shape fails here instead of on the mirror.
+
+const VTZ_PRAGUE = [
+  'BEGIN:VTIMEZONE',
+  'TZID:Europe/Prague',
+  'BEGIN:STANDARD',
+  'DTSTART:19701025T030000',
+  'TZOFFSETFROM:+0200',
+  'TZOFFSETTO:+0100',
+  'RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU',
+  'END:STANDARD',
+  'BEGIN:DAYLIGHT',
+  'DTSTART:19700329T020000',
+  'TZOFFSETFROM:+0100',
+  'TZOFFSETTO:+0200',
+  'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=-1SU',
+  'END:DAYLIGHT',
+  'END:VTIMEZONE'
+];
+
+const icsFixture = (lines) =>
+  ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Chappy tests//EN', ...VTZ_PRAGUE, ...lines, 'END:VCALENDAR', ''].join(
+    '\r\n'
+  );
+
+{
+  const parsed = ical.sync.parseICS(
+    icsFixture([
+      'BEGIN:VEVENT',
+      'UID:simple@test',
+      'SUMMARY:Dentist',
+      'LOCATION:Vinohradská 123\\, Praha 2',
+      'DTSTART;TZID=Europe/Prague:20260829T093000',
+      'DTEND;TZID=Europe/Prague:20260829T101500',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:allday@test',
+      'SUMMARY:Conference',
+      'DTSTART;VALUE=DATE:20260829',
+      'DTEND;VALUE=DATE:20260830',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:call@test',
+      'SUMMARY:Remote call',
+      'LOCATION:https://meet.google.com/abc-defg-hij',
+      'DTSTART;TZID=Europe/Prague:20260829T110000',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:recur@test',
+      'SUMMARY:Standup',
+      'DTSTART;TZID=Europe/Prague:20260824T091500',
+      'DTEND;TZID=Europe/Prague:20260824T093000',
+      'RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR',
+      'EXDATE;TZID=Europe/Prague:20260828T091500',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:cancelled@test',
+      'SUMMARY:Gone',
+      'STATUS:CANCELLED',
+      'DTSTART;TZID=Europe/Prague:20260829T120000',
+      'END:VEVENT'
+    ])
+  );
+  const windowStartMs = Date.parse('2026-08-26T00:00:00Z');
+  const windowEndMs = Date.parse('2026-09-03T00:00:00Z');
+  const events = expandIcsEvents(parsed, windowStartMs, windowEndMs).sort((a, b) => a.startMs - b.startMs);
+
+  const dentist = events.find((e) => e.title === 'Dentist');
+  assert.equal(dentist.startUtc, '2026-08-29T07:30:00.000Z', 'TZID start converts to the right UTC instant');
+  assert.equal(dentist.location, 'Vinohradská 123, Praha 2', 'escaped commas unescape');
+  assert.equal(dentist.allDay, false);
+
+  const conference = events.find((e) => e.title === 'Conference');
+  assert.equal(conference.allDay, true);
+  assert.equal(conference.startMs, new Date(2026, 7, 29).getTime(), 'all-day ICS start is local midnight');
+
+  const remoteCall = events.find((e) => e.title === 'Remote call');
+  assert.equal(remoteCall.location, '', 'video-call locations are dropped from ICS events too');
+
+  const standups = events.filter((e) => e.title === 'Standup').map((e) => e.startUtc);
+  assert.deepEqual(
+    standups,
+    ['2026-08-26T07:15:00.000Z', '2026-08-31T07:15:00.000Z', '2026-09-02T07:15:00.000Z'],
+    'recurrence expands within the window and EXDATE removes the 28th'
+  );
+
+  assert.equal(events.some((e) => e.title === 'Gone'), false, 'cancelled ICS events are dropped');
+}
+
+{
+  // A RECURRENCE-ID override replaces its base occurrence at the new time.
+  const parsed = ical.sync.parseICS(
+    icsFixture([
+      'BEGIN:VEVENT',
+      'UID:moved@test',
+      'SUMMARY:1:1',
+      'DTSTART;TZID=Europe/Prague:20260824T100000',
+      'DTEND;TZID=Europe/Prague:20260824T103000',
+      'RRULE:FREQ=WEEKLY;BYDAY=MO',
+      'END:VEVENT',
+      'BEGIN:VEVENT',
+      'UID:moved@test',
+      'RECURRENCE-ID;TZID=Europe/Prague:20260831T100000',
+      'SUMMARY:1:1 (moved)',
+      'DTSTART;TZID=Europe/Prague:20260831T140000',
+      'DTEND;TZID=Europe/Prague:20260831T143000',
+      'END:VEVENT'
+    ])
+  );
+  const events = expandIcsEvents(parsed, Date.parse('2026-08-30T00:00:00Z'), Date.parse('2026-09-02T00:00:00Z'));
+  assert.equal(events.length, 1, 'the overridden base occurrence is replaced, not duplicated');
+  assert.equal(events[0].startUtc, '2026-08-31T12:00:00.000Z', 'the override supplies the moved start');
+  assert.equal(events[0].title, '1:1 (moved)');
+}
+
+// ---- buildWeek --------------------------------------------------------------
+
+{
+  const events = [
+    allDay('conference', 0),
+    timed('started', 0, 8),
+    timed('standup', 0, 10),
+    timed('dentist', 1, 8, 30),
+    timed('review', 3, 15),
+    timed('beyond-window', 9, 9)
+  ];
+  const week = buildWeek(events, day(0, 9));
+  assert.equal(week.length, 3, 'empty days are omitted and out-of-window events ignored');
+  assert.deepEqual(
+    week[0].events.map((e) => e.title),
+    ['conference', 'standup'],
+    "today's group keeps all-day plus not-yet-started events"
+  );
+  assert.equal(new Date(week[0].dateUtc).getTime(), day(0, 0).getTime(), 'group date is local midnight');
+  assert.deepEqual(week[1].events.map((e) => e.title), ['dentist']);
+  assert.deepEqual(week[2].events.map((e) => e.title), ['review']);
+}
+
+// ---- keyless travel providers ----------------------------------------------
+
+{
+  const home = { lat: 50.0755, lng: 14.4378 };
+  const destination = { lat: 50.08, lng: 14.5 };
+  assert.equal(
+    buildOsrmUrl('driving', home, destination),
+    'https://routing.openstreetmap.de/routed-car/route/v1/driving/14.4378,50.0755;14.5,50.08?overview=false',
+    'OSRM takes lng,lat pairs on the car profile'
+  );
+  assert.ok(buildOsrmUrl('walking', home, destination).includes('/routed-foot/'));
+  assert.ok(buildOsrmUrl('bicycling', home, destination).includes('/routed-bike/'));
+  assert.equal(buildOsrmUrl('transit', home, destination), '', 'keyless tier has no transit routing');
+
+  const nominatim = buildNominatimUrl('Vinohradská 123, Praha 2');
+  assert.ok(nominatim.startsWith('https://nominatim.openstreetmap.org/search?'));
+  assert.ok(nominatim.includes('format=jsonv2'));
+  assert.ok(nominatim.includes('limit=1'));
+  assert.ok(nominatim.includes(encodeURIComponent('Vinohradská 123, Praha 2').replace(/%20/g, '+')) || nominatim.includes('Vinohradsk'));
+}
 
 console.log('✅ Calendar service logic checks passed.');

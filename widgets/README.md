@@ -76,20 +76,23 @@ chappy-widget://<id>/<entry>?instance=<instanceId>&theme=mirror
 
 `api` is a reserved host on the widget protocol (a package may not claim it as
 an id). Requests to it are answered by the main process instead of a widget
-folder, which is how a widget can use data that must not live in sandboxed web
-content — Google OAuth tokens, for the calendar backend. All responses are
+folder, which is how a widget can use things that must not live in sandboxed
+web content — calendar credentials and shared configuration. All responses are
 JSON with `Access-Control-Allow-Origin: *`, so any widget origin can call them.
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `chappy-widget://api/next-event` | GET | Active event + leave-by time + today's agenda (see `main/calendar-service.js` for the shape). `status` is `ok`, `not-configured`, `needs-auth`, or `error`. |
-| `chappy-widget://api/auth/start` | POST | Opens Google's consent page in the system browser (loopback OAuth). |
+| `chappy-widget://api/calendar` | GET | Active event + leave-by time, today's agenda, and the week ahead (see `main/calendar-service.js` for the shape). `status` is `ok`, `not-configured`, `needs-auth`, or `error`. `/next-event` is an alias. |
+| `chappy-widget://api/config` | GET | Non-secret calendar settings for the widget settings pane (sources, home, travel mode; credentials never cross the bridge). |
+| `chappy-widget://api/config` | POST | Save `{ icsUrls, homeAddress, travelMode }` from the pane; the home address is geocoded server-side. |
+| `chappy-widget://api/auth/start` | POST | Opens Google's consent page in the system browser (loopback OAuth, power tier only). |
 | `chappy-widget://api/auth/disconnect` | POST | Forgets the stored Google tokens. |
 
-The reference **Leave By** widget (`widgets/leave-by/`) is the consumer;
-`docs/CALENDAR-SETUP.md` covers the Google Cloud setup. Note the bridge is
-readable by *every* installed widget — same trust model as the rest of the
-current security posture below.
+The reference **Calendar** widget (`widgets/calendar/`) is the consumer;
+`docs/CALENDAR-SETUP.md` covers setup (the default tier needs nothing but a
+pasted ICS link). Note the bridge is readable — and its settings writable — by
+*every* installed widget: same trust model as the rest of the current security
+posture below.
 
 Chrome (drag handle, resize handle, remove button) is drawn by Chappy around the
 webview; the widget only renders its content. Size changes arrive as normal

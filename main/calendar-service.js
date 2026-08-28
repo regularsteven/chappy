@@ -1,24 +1,39 @@
-// "Leave By" calendar backend for the mirror widget bridge.
+// Calendar backend for the mirror widget bridge.
 //
-// The widget front end (widgets/leave-by/) is plain sandboxed web content, so
-// everything that touches Google lives here in the main process: OAuth tokens,
-// event selection, geocoding, and travel-time lookups. Widgets reach it through
-// the reserved `api` host on the widget protocol — main.js routes
+// The Calendar widget (widgets/calendar/) is plain sandboxed web content, so
+// everything privileged lives here in the main process. Widgets reach it
+// through the reserved `api` host on the widget protocol — main.js routes
 // chappy-widget://api/* requests to handleApiRequest() below.
 //
-// Endpoints:
-//   GET  /next-event       -> { status, active, agenda, stale, lastUpdatedUtc }
-//   POST /auth/start       -> opens the system browser for Google consent
-//   POST /auth/disconnect  -> forgets the stored tokens
+// Two source tiers (either or both may be configured):
+//   - ICS secret links (the zero-setup consumer path: Google / Apple / Outlook
+//     all publish a private ICS URL; the user pastes it in widget settings)
+//   - Google Calendar API with the user's own OAuth client (power tier:
+//     faster refresh, response statuses; see docs/CALENDAR-SETUP.md)
+// Two travel tiers:
+//   - Keyless OSM (Nominatim geocoding + FOSSGIS OSRM routing): no key, no
+//     billing, no live traffic — driving / walking / bicycling only
+//   - Google Maps key (Geocoding + Routes APIs): traffic-aware ETAs + transit
 //
-// User configuration lives in ~/.chappy/calendar.json (a template is written on
-// first run); OAuth tokens in ~/.chappy/calendar-tokens.json, encrypted with
-// Electron safeStorage when the OS supports it. See docs/CALENDAR-SETUP.md.
+// Endpoints:
+//   GET  /calendar         -> { status, active, today, week, stale, lastUpdatedUtc }
+//   GET  /next-event       -> alias of /calendar (original endpoint name)
+//   GET  /config           -> non-secret settings for the widget settings pane
+//   POST /config           -> save { icsUrls, homeAddress, travelMode } from the pane
+//   POST /auth/start       -> opens the system browser for Google consent
+//   POST /auth/disconnect  -> forgets the stored Google tokens
+//
+// User configuration lives in ~/.chappy/calendar.json (a template is written
+// on first run; the widget settings pane edits it through POST /config, and
+// credential fields are only ever edited by hand); OAuth tokens in
+// ~/.chappy/calendar-tokens.json, encrypted with safeStorage when available.
 
 const fs = require('node:fs');
 const http = require('node:http');
 const crypto = require('node:crypto');
 const path = require('path');
+const ical = require('node-ical');
+const appVersion = require('../package.json').version;
 
 // Electron is absent when plain-node test scripts require this module (the
 // electron package's node export is a string, not the runtime API) — every
@@ -40,6 +55,11 @@ const doFetch = (input, init) =>
 
 const WIDGET_API_HOST = 'api';
 
+// The OSM services (Nominatim, FOSSGIS OSRM) ask keyless callers to identify
+// themselves; our volume (one cached geocode per new address, one route per
+// travel refresh) is far inside their usage policies.
+const OSM_USER_AGENT = `Chappy-Mirror/${appVersion} (+https://github.com/regularsteven/chappy)`;
+
 const CALENDAR_TTL_MS = 15 * 60 * 1000;
 const TRAVEL_TTL_LIVE_MS = 10 * 60 * 1000;
 const TRAVEL_TTL_PREDICTIVE_MS = 30 * 60 * 1000;
@@ -50,9 +70,16 @@ const OAUTH_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 const OAUTH_FLOW_TIMEOUT_MS = 5 * 60 * 1000;
 const ACCESS_TOKEN_SKEW_MS = 60 * 1000;
 const MAX_CALENDARS = 10;
+const MAX_ICS_URLS = 5;
+const WEEK_DAYS = 7;
+// Fetch window covers today through the end of the week view.
+const FETCH_WINDOW_DAYS = WEEK_DAYS + 1;
 
 // Config keys -> Routes API travelMode values.
 const TRAVEL_MODES = { driving: 'DRIVE', walking: 'WALK', bicycling: 'BICYCLE', transit: 'TRANSIT' };
+// Config keys -> FOSSGIS OSRM instance profiles. No transit — that tier needs
+// the Google key; the widget settings say so next to the mode picker.
+const OSRM_PROFILES = { driving: 'routed-car', walking: 'routed-foot', bicycling: 'routed-bike' };
 
 const VIDEO_CALL_HOSTS = /(?:meet\.google\.com|zoom\.us|teams\.microsoft\.com|teams\.live\.com|webex\.com|whereby\.com)/i;
 
@@ -72,6 +99,21 @@ const clampInt = (value, fallback, min, max) => {
 
 // ---- Pure logic (exported for scripts/check-calendar.mjs) ------------------
 
+// Calendar apps hand out "webcal://" links for the same https resource.
+const normalizeIcsUrl = (value) => {
+  const raw = cleanString(value);
+  if (!raw) {
+    return '';
+  }
+  const candidate = raw.replace(/^webcal:\/\//i, 'https://');
+  try {
+    const parsed = new URL(candidate);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.toString() : '';
+  } catch (error) {
+    return '';
+  }
+};
+
 const sanitizeCalendarConfig = (input) => {
   const raw = isObject(input) ? input : {};
   const lat = Number(raw.homeCoordinates?.lat);
@@ -83,10 +125,15 @@ const sanitizeCalendarConfig = (input) => {
   const calendarIds = Array.isArray(raw.calendarIds)
     ? raw.calendarIds.map(cleanString).filter(Boolean).slice(0, MAX_CALENDARS)
     : [];
+  const icsUrls = Array.isArray(raw.icsUrls)
+    ? raw.icsUrls.map(normalizeIcsUrl).filter(Boolean).slice(0, MAX_ICS_URLS)
+    : [];
   return {
+    icsUrls,
     googleClientId: cleanString(raw.googleClientId),
     googleClientSecret: cleanString(raw.googleClientSecret),
     mapsApiKey: cleanString(raw.mapsApiKey),
+    homeAddress: cleanString(raw.homeAddress).slice(0, 200),
     homeCoordinates,
     rolloverHour: clampInt(raw.rolloverHour, 17, 0, 23),
     bufferMinutes: clampInt(raw.bufferMinutes, 10, 0, 120),
@@ -105,8 +152,8 @@ const isVideoCallLocation = (location) => {
   return /^https?:\/\//i.test(value) || VIDEO_CALL_HOSTS.test(value);
 };
 
-// Google event -> internal shape, or null when it should not exist for us at
-// all (cancelled, declined by the user, or unparseable start).
+// Google API event -> internal shape, or null when it should not exist for us
+// at all (cancelled, declined by the user, or unparseable start).
 const normalizeGoogleEvent = (item) => {
   if (!isObject(item) || item.status === 'cancelled') {
     return null;
@@ -139,14 +186,88 @@ const normalizeGoogleEvent = (item) => {
   };
 };
 
+const buildIcsEvent = (item, startMs, allDay) => {
+  const rawLocation = cleanString(item.location);
+  return {
+    // Recurring instances share a UID; suffix the instant to keep travel-cache
+    // keys distinct per occurrence.
+    id: `${cleanString(item.uid) || 'ics'}@${startMs}`,
+    title: cleanString(item.summary) || '(untitled)',
+    startMs,
+    startUtc: new Date(startMs).toISOString(),
+    allDay,
+    location: rawLocation && !isVideoCallLocation(rawLocation) ? rawLocation : ''
+  };
+};
+
+const toMs = (value) => {
+  if (value instanceof Date) {
+    return value.getTime();
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : NaN;
+};
+
+// node-ical parse output -> internal events within [windowStartMs, windowEndMs).
+// rrule.between() does NOT apply EXDATEs or RECURRENCE-ID overrides — both are
+// exposed as maps on the VEVENT and must be applied here.
+const expandIcsEvents = (parsed, windowStartMs, windowEndMs) => {
+  const out = [];
+  for (const item of Object.values(isObject(parsed) ? parsed : {})) {
+    if (!isObject(item) || item.type !== 'VEVENT') {
+      continue;
+    }
+    if (cleanString(item.status).toUpperCase() === 'CANCELLED') {
+      continue;
+    }
+    const allDay = item.datetype === 'date';
+    const push = (source, startMs) => {
+      if (Number.isFinite(startMs) && startMs >= windowStartMs && startMs < windowEndMs) {
+        out.push(buildIcsEvent(source, startMs, allDay));
+      }
+    };
+    if (item.rrule && typeof item.rrule.between === 'function') {
+      // node-ical maps each override under two keys (date and full ISO) that
+      // point at the same object — dedupe by identity or it renders twice.
+      const overrides = isObject(item.recurrences)
+        ? [...new Set(Object.values(item.recurrences).filter(isObject))]
+        : [];
+      const overriddenMs = new Set(overrides.map((o) => toMs(o.recurrenceid)).filter(Number.isFinite));
+      const exdateMs = new Set(
+        isObject(item.exdate) ? Object.values(item.exdate).map(toMs).filter(Number.isFinite) : []
+      );
+      let occurrences = [];
+      try {
+        occurrences = item.rrule.between(new Date(windowStartMs - 1), new Date(windowEndMs)) || [];
+      } catch (error) {
+        occurrences = [];
+      }
+      for (const occurrence of occurrences) {
+        const occurrenceMs = toMs(occurrence);
+        if (!exdateMs.has(occurrenceMs) && !overriddenMs.has(occurrenceMs)) {
+          push(item, occurrenceMs);
+        }
+      }
+      // Moved/edited instances carry their own VEVENT with a RECURRENCE-ID.
+      for (const override of overrides) {
+        if (cleanString(override.status).toUpperCase() !== 'CANCELLED') {
+          push(override, toMs(override.start));
+        }
+      }
+    } else if (item.start instanceof Date) {
+      push(item, item.start.getTime());
+    }
+  }
+  return out;
+};
+
 const localDayKey = (date) => date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate();
 
 // Spec selection: today's next future event until the rollover hour or until
 // today is exhausted; after either, tomorrow's first event (and only
 // tomorrow's — day-after-tomorrow returns null). Buckets use local dates, but
 // candidacy is `start > now` in absolute time, so an overnight 00:30 event is
-// reachable before midnight. Expects timed (non-all-day) events sorted by
-// startMs.
+// reachable before midnight. All-day events are never active.
 const selectActiveEvent = (events, now, rolloverHour) => {
   const nowMs = now.getTime();
   const todayKey = localDayKey(now);
@@ -163,6 +284,10 @@ const selectActiveEvent = (events, now, rolloverHour) => {
   return tomorrow ? { event: tomorrow, isTomorrow: true } : { event: null, isTomorrow: false };
 };
 
+const agendaOrder = (a, b) => (a.allDay === b.allDay ? a.startMs - b.startMs : a.allDay ? -1 : 1);
+
+const toAgendaItem = (event) => ({ title: event.title, startUtc: event.startUtc, allDay: event.allDay });
+
 // The rest of today: all-day events first, then timed events that have not
 // started yet. In-progress events are deliberately absent — the agenda is
 // "what is still coming", not "what you are already in".
@@ -176,8 +301,34 @@ const buildAgenda = (events, now) => {
       }
       return event.allDay ? true : event.startMs > nowMs;
     })
-    .sort((a, b) => (a.allDay === b.allDay ? a.startMs - b.startMs : a.allDay ? -1 : 1))
-    .map((event) => ({ title: event.title, startUtc: event.startUtc, allDay: event.allDay }));
+    .sort(agendaOrder)
+    .map(toAgendaItem);
+};
+
+// Week view: the next `days` local dates, each with its events (today shows
+// only what is still coming). Empty days are omitted — the widget renders
+// what exists rather than a grid of blanks. dateUtc is the local midnight of
+// the group's day; the widget formats the weekday label from it.
+const buildWeek = (events, now, days = WEEK_DAYS) => {
+  const nowMs = now.getTime();
+  const groups = [];
+  for (let offset = 0; offset < days; offset += 1) {
+    const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
+    const dayKey = localDayKey(dayStart);
+    const dayEvents = events
+      .filter((event) => {
+        if (localDayKey(new Date(event.startMs)) !== dayKey) {
+          return false;
+        }
+        return offset === 0 && !event.allDay ? event.startMs > nowMs : true;
+      })
+      .sort(agendaOrder)
+      .map(toAgendaItem);
+    if (dayEvents.length) {
+      groups.push({ dateUtc: dayStart.toISOString(), events: dayEvents });
+    }
+  }
+  return groups;
 };
 
 const computeLeaveByUtc = (startMs, travelDurationSeconds, bufferMinutes) =>
@@ -216,6 +367,22 @@ const buildRouteRequestBody = ({ home, destination, travelMode, departureTimeMs 
   return body;
 };
 
+// OSRM wants lng,lat pairs. Returns '' for modes the keyless tier cannot do.
+const buildOsrmUrl = (travelMode, home, destination) => {
+  const profile = OSRM_PROFILES[travelMode];
+  if (!profile) {
+    return '';
+  }
+  return (
+    `https://routing.openstreetmap.de/${profile}/route/v1/driving/` +
+    `${home.lng},${home.lat};${destination.lng},${destination.lat}?overview=false`
+  );
+};
+
+const buildNominatimUrl = (address) =>
+  'https://nominatim.openstreetmap.org/search?' +
+  new URLSearchParams({ q: address, format: 'jsonv2', limit: '1' }).toString();
+
 const normalizeGeocodeKey = (location) => cleanString(location).toLowerCase().replace(/\s+/g, ' ');
 
 // ---- Service state ---------------------------------------------------------
@@ -231,15 +398,17 @@ let calendarCache = null; // { events, fetchedAtMs }
 let calendarFetchPromise = null;
 let travelCache = null; // { key, computedAtMs, value: { travel, leaveByUtc } }
 let travelFailure = null; // { key, atMs }
-let geocodeCache = new Map(); // normalized address -> { lat, lng }
+let geocodeCache = new Map(); // normalized address -> { lat, lng, label? }
 let geocodeFailures = new Map(); // normalized address -> failedAtMs
 let activeAuthFlow = null; // { server, timer }
 
 const CONFIG_TEMPLATE = {
+  icsUrls: [],
+  homeAddress: '',
   googleClientId: '',
   googleClientSecret: '',
   mapsApiKey: '',
-  homeCoordinates: { lat: 50.0755, lng: 14.4378 },
+  homeCoordinates: null,
   rolloverHour: 17,
   bufferMinutes: 10,
   travelMode: 'driving',
@@ -288,6 +457,23 @@ const loadCalendarConfig = () => {
   }
   configCache = { config: sanitizeCalendarConfig(parsed), mtimeMs };
   return configCache.config;
+};
+
+// Merge a settings patch into calendar.json, preserving hand-edited fields the
+// widget settings pane does not manage (credentials, buffer, rollover).
+const updateCalendarConfigFile = (patch) => {
+  let raw = {};
+  try {
+    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    raw = isObject(parsed) ? parsed : {};
+  } catch (error) {
+    raw = {};
+  }
+  const merged = { ...raw, ...patch };
+  const tempPath = `${configPath}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(merged, null, 2), 'utf8');
+  fs.renameSync(tempPath, configPath);
+  configCache = null;
 };
 
 // ---- Token storage ---------------------------------------------------------
@@ -479,15 +665,15 @@ const getAccessToken = async (config) => {
   return tokensState.accessToken;
 };
 
-// ---- Google Calendar -------------------------------------------------------
+// ---- Event sources ---------------------------------------------------------
 
-const fetchCalendarEvents = async (config) => {
+const fetchGoogleEvents = async (config) => {
   const accessToken = await getAccessToken(config);
   const now = new Date();
-  // Window: now -> local midnight after tomorrow. events.list returns events
-  // overlapping the window, so today's all-day events still appear.
+  // Window: now -> local midnight after the week view's horizon. events.list
+  // returns events overlapping the window, so today's all-day events appear.
   const timeMin = now.toISOString();
-  const timeMax = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2).toISOString();
+  const timeMax = new Date(now.getFullYear(), now.getMonth(), now.getDate() + FETCH_WINDOW_DAYS).toISOString();
   const collected = [];
   for (const calendarId of config.calendarIds) {
     const url =
@@ -497,7 +683,7 @@ const fetchCalendarEvents = async (config) => {
         timeMax,
         singleEvents: 'true',
         orderBy: 'startTime',
-        maxResults: '100'
+        maxResults: '250'
       }).toString();
     const response = await doFetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
     // 401 means the token is bad; 403 can be a transient quota error, which
@@ -513,21 +699,71 @@ const fetchCalendarEvents = async (config) => {
       collected.push(...data.items);
     }
   }
-  return collected
-    .map(normalizeGoogleEvent)
-    .filter(Boolean)
-    .sort((a, b) => a.startMs - b.startMs);
+  return collected.map(normalizeGoogleEvent).filter(Boolean);
+};
+
+const fetchIcsEvents = async (config) => {
+  const now = new Date();
+  // Start at local midnight so today's all-day events fall inside the window.
+  const windowStartMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const windowEndMs = new Date(now.getFullYear(), now.getMonth(), now.getDate() + FETCH_WINDOW_DAYS).getTime();
+  const events = [];
+  for (const url of config.icsUrls) {
+    const response = await doFetch(url, {
+      headers: { 'User-Agent': OSM_USER_AGENT, Accept: 'text/calendar,*/*;q=0.8' }
+    });
+    if (!response.ok) {
+      throw new Error(`ICS fetch failed (HTTP ${response.status})`);
+    }
+    const text = await response.text();
+    events.push(...expandIcsEvents(ical.sync.parseICS(text), windowStartMs, windowEndMs));
+  }
+  return events;
+};
+
+// Fetch every configured source. Partial results are better than none, but a
+// recent full cache is better than a fresh partial one — the caller decides.
+const fetchAllSources = async (config) => {
+  const jobs = [];
+  if (config.icsUrls.length) {
+    jobs.push(fetchIcsEvents(config));
+  }
+  if (config.googleClientId && config.googleClientSecret && loadTokens()) {
+    jobs.push(fetchGoogleEvents(config));
+  }
+  const results = await Promise.allSettled(jobs);
+  const events = [];
+  let failures = 0;
+  let sawNeedsAuth = false;
+  for (const result of results) {
+    if (result.status === 'fulfilled') {
+      events.push(...result.value);
+    } else {
+      failures += 1;
+      if (result.reason instanceof NeedsAuthError) {
+        sawNeedsAuth = true;
+      }
+    }
+  }
+  if (!events.length && failures > 0) {
+    throw sawNeedsAuth && jobs.length === 1 ? new NeedsAuthError() : new Error('All calendar sources failed');
+  }
+  return { events: events.sort((a, b) => a.startMs - b.startMs), partial: failures > 0 };
 };
 
 const getCalendarEvents = async (config) => {
   if (calendarCache && Date.now() - calendarCache.fetchedAtMs < CALENDAR_TTL_MS) {
-    return calendarCache;
+    return { ...calendarCache, servedStale: false };
   }
   if (!calendarFetchPromise) {
-    calendarFetchPromise = fetchCalendarEvents(config)
-      .then((events) => {
-        calendarCache = { events, fetchedAtMs: Date.now() };
-        return calendarCache;
+    calendarFetchPromise = fetchAllSources(config)
+      .then((result) => {
+        if (result.partial && calendarCache && Date.now() - calendarCache.fetchedAtMs < 2 * CALENDAR_TTL_MS) {
+          // One source failed but a recent full snapshot exists — keep it.
+          return { ...calendarCache, servedStale: true };
+        }
+        calendarCache = { events: result.events, fetchedAtMs: Date.now() };
+        return { ...calendarCache, servedStale: result.partial };
       })
       .finally(() => {
         calendarFetchPromise = null;
@@ -546,6 +782,40 @@ const persistGeocodeCache = () => {
   }
 };
 
+const geocodeViaGoogle = async (config, address) => {
+  const url =
+    'https://maps.googleapis.com/maps/api/geocode/json?' +
+    new URLSearchParams({ address, key: config.mapsApiKey }).toString();
+  const response = await doFetch(url);
+  const data = await response.json();
+  const first = data.status === 'OK' ? data.results?.[0] : null;
+  const coords = first?.geometry?.location;
+  if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
+    throw new Error(`Geocode returned ${data.status || response.status}`);
+  }
+  return { lat: coords.lat, lng: coords.lng, label: cleanString(first.formatted_address) };
+};
+
+const geocodeViaNominatim = async (address) => {
+  const response = await doFetch(buildNominatimUrl(address), {
+    headers: { 'User-Agent': OSM_USER_AGENT, Accept: 'application/json' }
+  });
+  if (!response.ok) {
+    throw new Error(`Nominatim returned HTTP ${response.status}`);
+  }
+  const data = await response.json();
+  const first = Array.isArray(data) ? data[0] : null;
+  const lat = Number(first?.lat);
+  const lng = Number(first?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new Error('Nominatim found no match');
+  }
+  return { lat, lng, label: cleanString(first.display_name) };
+};
+
+const geocodeAddress = (config, address) =>
+  config.mapsApiKey ? geocodeViaGoogle(config, address) : geocodeViaNominatim(address);
+
 const geocode = async (config, location) => {
   const key = normalizeGeocodeKey(location);
   if (geocodeCache.has(key)) {
@@ -556,16 +826,7 @@ const geocode = async (config, location) => {
     return null;
   }
   try {
-    const url =
-      'https://maps.googleapis.com/maps/api/geocode/json?' +
-      new URLSearchParams({ address: location, key: config.mapsApiKey }).toString();
-    const response = await doFetch(url);
-    const data = await response.json();
-    const coords = data.status === 'OK' ? data.results?.[0]?.geometry?.location : null;
-    if (!coords || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
-      throw new Error(`Geocode returned ${data.status || response.status}`);
-    }
-    const value = { lat: coords.lat, lng: coords.lng };
+    const value = await geocodeAddress(config, location);
     geocodeCache.set(key, value);
     geocodeFailures.delete(key);
     persistGeocodeCache();
@@ -576,7 +837,7 @@ const geocode = async (config, location) => {
   }
 };
 
-const computeRoute = async (config, destination, departureTimeMs) => {
+const computeGoogleRoute = async (config, destination, departureTimeMs) => {
   const response = await doFetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
     method: 'POST',
     headers: {
@@ -605,6 +866,23 @@ const computeRoute = async (config, destination, departureTimeMs) => {
   return { durationSeconds, distanceMeters: Number(route.distanceMeters) || 0 };
 };
 
+const computeOsmRoute = async (config, destination) => {
+  const url = buildOsrmUrl(config.travelMode, config.homeCoordinates, destination);
+  if (!url) {
+    throw new Error('Transit routing needs a Google Maps API key');
+  }
+  const response = await doFetch(url, { headers: { 'User-Agent': OSM_USER_AGENT, Accept: 'application/json' } });
+  if (!response.ok) {
+    throw new Error(`OSRM failed (HTTP ${response.status})`);
+  }
+  const data = await response.json();
+  const route = data.code === 'Ok' && Array.isArray(data.routes) ? data.routes[0] : null;
+  if (!route || !Number.isFinite(route.duration)) {
+    throw new Error('OSRM returned no usable route');
+  }
+  return { durationSeconds: Math.round(route.duration), distanceMeters: Math.round(route.distance || 0) };
+};
+
 const resolveTravel = async (config, event, nowMs) => {
   const destination = await geocode(config, event.location);
   if (!destination) {
@@ -612,17 +890,21 @@ const resolveTravel = async (config, event, nowMs) => {
   }
   let route;
   let trafficModel;
-  if (isLiveDeparture(event.startMs, nowMs)) {
+  if (!config.mapsApiKey) {
+    // Keyless tier: static durations, no traffic model to steer.
+    trafficModel = 'static';
+    route = await computeOsmRoute(config, destination);
+  } else if (isLiveDeparture(event.startMs, nowMs)) {
     // Omitted departureTime means "now" — live traffic.
     trafficModel = 'live';
-    route = await computeRoute(config, destination, null);
+    route = await computeGoogleRoute(config, destination, null);
   } else {
     // Estimated departure is chicken-and-egg: rough duration from a query at
     // the event start, then re-query at start minus that duration.
     trafficModel = 'predictive';
-    const rough = await computeRoute(config, destination, event.startMs);
+    const rough = await computeGoogleRoute(config, destination, event.startMs);
     const departureMs = Math.max(event.startMs - rough.durationSeconds * 1000, nowMs + 60 * 1000);
-    route = await computeRoute(config, destination, departureMs);
+    route = await computeGoogleRoute(config, destination, departureMs);
   }
   return {
     travel: {
@@ -664,30 +946,37 @@ const emptyPayload = (status, detail) => ({
   status,
   detail: detail || undefined,
   active: null,
-  agenda: [],
+  today: [],
+  week: [],
   stale: false,
   lastUpdatedUtc: null
 });
 
-const getNextEventPayload = async () => {
+const getCalendarPayload = async () => {
   const config = loadCalendarConfig();
-  if (!config.googleClientId || !config.googleClientSecret) {
-    return emptyPayload('not-configured', `Add Google credentials to ${configPath}`);
+  const hasIcs = config.icsUrls.length > 0;
+  const hasGoogleCreds = Boolean(config.googleClientId && config.googleClientSecret);
+  if (!hasIcs && !hasGoogleCreds) {
+    return emptyPayload('not-configured', 'Open the widget settings and add a calendar link.');
   }
-  if (!loadTokens()) {
+  // The connect screen appears only when Google is the sole source; with an
+  // ICS link present the widget renders data and settings shows the hint.
+  if (!hasIcs && !loadTokens()) {
     return { ...emptyPayload('needs-auth'), authPending: Boolean(activeAuthFlow) };
   }
 
   let events;
   let stale = false;
   try {
-    ({ events } = await getCalendarEvents(config));
+    const result = await getCalendarEvents(config);
+    ({ events } = result);
+    stale = result.servedStale;
   } catch (error) {
     if (error instanceof NeedsAuthError) {
       return { ...emptyPayload('needs-auth'), authPending: Boolean(activeAuthFlow) };
     }
     if (!calendarCache) {
-      return emptyPayload('error', 'Google Calendar is unreachable.');
+      return emptyPayload('error', 'Calendar sources are unreachable.');
     }
     // Slightly old data beats a blank mirror.
     ({ events } = calendarCache);
@@ -704,8 +993,8 @@ const getNextEventPayload = async () => {
     let leaveByUtc = null;
     let travelUnavailable = false;
     if (active.location) {
-      const canRoute = Boolean(config.mapsApiKey && config.homeCoordinates);
-      const resolved = canRoute ? await getTravelFor(config, active, nowMs) : null;
+      // Keyless geocoding always exists (Nominatim); only home must be set.
+      const resolved = config.homeCoordinates ? await getTravelFor(config, active, nowMs) : null;
       if (resolved) {
         ({ travel, leaveByUtc } = resolved);
       } else {
@@ -726,10 +1015,72 @@ const getNextEventPayload = async () => {
   return {
     status: 'ok',
     active: activePayload,
-    agenda: buildAgenda(events, now),
+    today: buildAgenda(events, now),
+    week: buildWeek(events, now),
     stale,
     lastUpdatedUtc: calendarCache ? new Date(calendarCache.fetchedAtMs).toISOString() : null
   };
+};
+
+// Non-secret settings for the widget's settings pane. Credentials never cross
+// the bridge — only whether they exist.
+const getConfigPayload = () => {
+  const config = loadCalendarConfig();
+  return {
+    icsUrls: config.icsUrls,
+    homeAddress: config.homeAddress,
+    homeConfigured: Boolean(config.homeCoordinates),
+    travelMode: config.travelMode,
+    bufferMinutes: config.bufferMinutes,
+    rolloverHour: config.rolloverHour,
+    hasGoogleCreds: Boolean(config.googleClientId && config.googleClientSecret),
+    googleConnected: Boolean(loadTokens()),
+    hasMapsKey: Boolean(config.mapsApiKey),
+    travelProvider: config.mapsApiKey ? 'google' : 'osm'
+  };
+};
+
+const saveConfigFromWidget = async (body) => {
+  if (!isObject(body)) {
+    return { status: 400, payload: { ok: false, error: 'Invalid settings payload.' } };
+  }
+  const config = loadCalendarConfig();
+  const patch = {};
+  if (Array.isArray(body.icsUrls)) {
+    patch.icsUrls = body.icsUrls.map(normalizeIcsUrl).filter(Boolean).slice(0, MAX_ICS_URLS);
+  }
+  if (typeof body.travelMode === 'string' && TRAVEL_MODES[body.travelMode]) {
+    patch.travelMode = body.travelMode;
+  }
+  let home = null;
+  const homeAddress = cleanString(body.homeAddress).slice(0, 200);
+  if (homeAddress && homeAddress !== config.homeAddress) {
+    try {
+      home = await geocodeAddress(config, homeAddress);
+    } catch (error) {
+      home = null;
+    }
+    if (!home) {
+      return {
+        status: 422,
+        payload: { ok: false, error: 'Could not find that address — try adding the city or country.' }
+      };
+    }
+    patch.homeAddress = homeAddress;
+    patch.homeCoordinates = { lat: home.lat, lng: home.lng };
+  }
+  if (!Object.keys(patch).length) {
+    return { status: 200, payload: { ok: true } };
+  }
+  updateCalendarConfigFile(patch);
+  if ('icsUrls' in patch) {
+    calendarCache = null;
+  }
+  if ('homeCoordinates' in patch || 'travelMode' in patch) {
+    travelCache = null;
+    travelFailure = null;
+  }
+  return { status: 200, payload: { ok: true, home: home ? { label: home.label } : undefined } };
 };
 
 // ---- HTTP-ish router for chappy-widget://api/* -----------------------------
@@ -754,8 +1105,16 @@ const handleApiRequest = async (request) => {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
-    if (request.method === 'GET' && route === '/next-event') {
-      return jsonResponse(await getNextEventPayload());
+    if (request.method === 'GET' && (route === '/calendar' || route === '/next-event')) {
+      return jsonResponse(await getCalendarPayload());
+    }
+    if (request.method === 'GET' && route === '/config') {
+      return jsonResponse(getConfigPayload());
+    }
+    if (request.method === 'POST' && route === '/config') {
+      const body = await request.json().catch(() => null);
+      const result = await saveConfigFromWidget(body);
+      return jsonResponse(result.payload, result.status);
     }
     if (request.method === 'POST' && route === '/auth/start') {
       const config = loadCalendarConfig();
@@ -784,16 +1143,21 @@ module.exports = {
   handleApiRequest,
   _test: {
     sanitizeCalendarConfig,
+    normalizeIcsUrl,
     isVideoCallLocation,
     normalizeGoogleEvent,
+    expandIcsEvents,
     localDayKey,
     selectActiveEvent,
     buildAgenda,
+    buildWeek,
     computeLeaveByUtc,
     isLiveDeparture,
     travelTtlMs,
     parseDurationSeconds,
     buildRouteRequestBody,
+    buildOsrmUrl,
+    buildNominatimUrl,
     normalizeGeocodeKey
   }
 };
