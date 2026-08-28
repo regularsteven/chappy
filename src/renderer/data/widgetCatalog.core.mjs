@@ -3,6 +3,7 @@
 export const widgetTaxonomies = {
   time: { label: 'Time', color: '#38bdf8' },
   weather: { label: 'Weather', color: '#f97316' },
+  calendar: { label: 'Calendar', color: '#f472b6' },
   info: { label: 'Info', color: '#10b981' },
   custom: { label: 'Custom', color: '#a855f7' }
 };
