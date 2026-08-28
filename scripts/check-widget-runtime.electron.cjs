@@ -27,7 +27,10 @@ ipcMain.handle = (channel, handler) => {
 require('../main/main.js');
 
 const WIDGET_PARTITION = 'persist:chappy-widgets';
-const zipPath = path.resolve(__dirname, '../widgets/dist/weather-0.1.0.zip');
+const weatherManifest = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, '../widgets/weather/widget.json'), 'utf8')
+);
+const zipPath = path.resolve(__dirname, `../widgets/dist/weather-${weatherManifest.version}.zip`);
 
 const assertOk = (condition, message) => {
   if (!condition) {
@@ -43,7 +46,7 @@ app.whenReady().then(async () => {
     // 1. Install through the real IPC handler (extract, validate, move into place).
     const installHandler = ipcHandlers.get('chappy:install-widget');
     assertOk(typeof installHandler === 'function', 'chappy:install-widget handler not registered');
-    const install = await installHandler(null, { name: 'weather-0.1.0.zip', buffer: fs.readFileSync(zipPath) });
+    const install = await installHandler(null, { name: path.basename(zipPath), buffer: fs.readFileSync(zipPath) });
     assertOk(!install?.error, `Install failed: ${install?.error}`);
     assertOk(install?.manifest?.id === 'weather', 'Installed manifest id mismatch');
     assertOk(install.manifest.entry === 'index.html', 'Installed manifest entry mismatch');
