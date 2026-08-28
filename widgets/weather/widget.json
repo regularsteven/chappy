@@ -1,0 +1,13 @@
+{
+  "id": "weather",
+  "name": "Weather",
+  "version": "0.1.0",
+  "description": "Current temperature, today's high, and a 3 day forecast for a chosen city.",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "author": "Chappy",
+  "tags": ["weather"],
+  "defaultSize": { "width": 360, "height": 330 },
+  "minSize": { "width": 280, "height": 250 },
+  "multiInstance": true
+}

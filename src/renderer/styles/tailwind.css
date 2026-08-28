@@ -373,12 +373,86 @@
   max-width: 10rem;
 }
 
-#mirror-add-clock-button {
+#mirror-add-widget-button {
   background-color: rgba(0, 0, 0, 0.6);
   border-color: #1e293b;
   color: #475569;
 }
 
-#mirror-add-clock-button:hover {
+#mirror-add-widget-button:hover {
   color: #cbd5e1;
+}
+
+/* Packaged HTML widgets on the mirror canvas: near-invisible chrome that
+   reveals itself on hover, like the clock widget. */
+.package-widget {
+  background-color: #000000;
+  border: 1px solid transparent;
+}
+
+.package-widget:hover,
+.package-widget--dragging {
+  border-color: rgba(30, 41, 59, 0.8);
+}
+
+.package-widget-handle {
+  height: 1.5rem;
+  cursor: move;
+  color: #475569;
+  background-color: rgba(2, 6, 23, 0.85);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.package-widget:hover .package-widget-handle,
+.package-widget--dragging .package-widget-handle {
+  opacity: 1;
+}
+
+.package-widget webview {
+  background-color: #000000;
+}
+
+.package-widget-placeholder {
+  color: #475569;
+}
+
+.package-widget-resize-handle {
+  opacity: 0;
+  transition: opacity 140ms ease;
+  background: linear-gradient(
+    135deg,
+    transparent 0%,
+    transparent 55%,
+    rgba(71, 85, 105, 0.7) 56%,
+    transparent 60%,
+    transparent 70%,
+    rgba(71, 85, 105, 0.7) 71%,
+    transparent 75%
+  );
+}
+
+.package-widget:hover .package-widget-resize-handle {
+  opacity: 1;
+}
+
+#widget-library-panel,
+#widget-catalog-panel,
+#configure-widgets-panel,
+#widgets-disabled-panel {
+  background-color: var(--ch-panel-bg-soft);
+  border-color: var(--ch-border);
+}
+
+#chappy-app-shell[data-theme='light'] #go-to-widgets-link,
+#chappy-app-shell[data-theme='light'] #configure-open-widgets-link {
+  color: #0c4a6e;
+  background-color: rgba(14, 165, 233, 0.2);
+  border-color: rgba(3, 105, 161, 0.45);
+}
+
+#chappy-app-shell[data-theme='light'] #go-to-widgets-link:hover,
+#chappy-app-shell[data-theme='light'] #configure-open-widgets-link:hover {
+  color: #082f49;
+  background-color: rgba(14, 165, 233, 0.3);
 }
