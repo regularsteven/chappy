@@ -1,51 +1,69 @@
-# Google Calendar setup for the Leave By widget
+# Calendar widget setup
 
-The **Leave By** widget (`widgets/leave-by/`) shows your next calendar event and
-when to leave home to arrive on time. Its backend runs inside Chappy's main
-process and needs Google credentials that only you can create. One-time setup,
-about ten minutes.
+The **Calendar** widget (`widgets/calendar/`) shows your agenda — today, the
+week, or the single next event — and, when an event has a real-world location,
+when to leave home to arrive on time.
 
-## 1. Create a Google Cloud project
+## The normal path: two minutes, no accounts
 
-1. Open <https://console.cloud.google.com/> and create a project (e.g. `chappy-mirror`).
-2. Under **APIs & Services → Library**, enable three APIs:
-   - **Google Calendar API** (events)
-   - **Geocoding API** (event address → coordinates)
-   - **Routes API** (travel time with traffic)
+Everything happens in the widget's own settings (hover the widget, hit ⚙):
 
-The Calendar API is free. Geocoding and Routes are billed per request but fall
-well inside Google's monthly free credit at this widget's refresh cadence
-(roughly 100–150 route calls/day with the mirror on all day) — a billing
-account must still be attached to the project for them to work.
+1. **Paste your calendar's secret link.**
+   - **Google Calendar**: Settings → *Settings for my calendars* → your
+     calendar → *Integrate calendar* → **Secret address in iCal format**.
+   - **Outlook**: Settings → Calendar → *Shared calendars* → publish, copy the
+     ICS link.
+   - **Apple iCloud**: calendar list → share icon → *Public Calendar*, copy the
+     link (`webcal://…` links work as-is).
+   Several links can be added, one per line.
+2. **Type your home address** — where travel starts. It is resolved once and
+   the coordinates are stored locally.
+3. **Pick a travel mode** — 🚗 🚈 🚶 🚴.
 
-## 2. Create the OAuth client (calendar access)
+That's it. No Google account connection, no API keys, no billing. Geocoding
+and routing use the free OpenStreetMap services (Nominatim and OSRM), which
+need no credentials. Distances are metric.
 
-1. **APIs & Services → OAuth consent screen**: configure it, **External** is
-   fine; add your own Google account as a **test user**. The app can stay in
-   *Testing* — only you use it. (In Testing mode Google expires refresh tokens
-   after 7 days; publish the app to make the connection permanent.)
-2. **APIs & Services → Credentials → Create credentials → OAuth client ID**,
-   application type **Desktop app**.
-3. Note the **client ID** and **client secret**. For Desktop-type clients the
-   secret is not treated as confidential by Google — Chappy still keeps it out
-   of the renderer and widgets; it lives only in the config file below.
+What the keyless tier can't do: **live traffic** (leave-by is based on typical
+route duration plus your buffer, not current congestion) and **transit**
+estimates. Both come with the power tier below.
 
-## 3. Create the API key (geocoding + routes)
+Treat the secret calendar link like a password — anyone who has it can read
+your calendar. It lives in `~/.chappy/calendar.json` on the mirror machine and
+is only ever sent to the calendar provider that issued it. In Google's
+settings, *Reset* the secret address at any time to revoke it.
 
-**Credentials → Create credentials → API key.** Restrict it to the
-**Geocoding API** and **Routes API**.
+## The power tier (optional): your own Google credentials
 
-## 4. Fill in the config file
+For traffic-aware leave-by times, transit routing, faster event sync, and
+declined-event filtering, add your own Google Cloud credentials to
+`~/.chappy/calendar.json`. This is developer-grade setup — the widget works
+fine without it.
 
-Chappy writes a template to `~/.chappy/calendar.json` on first launch after
-this feature is installed. Edit it:
+<details>
+<summary>Google Cloud setup (~10 minutes)</summary>
+
+1. Create a project at <https://console.cloud.google.com/>, then under
+   **APIs & Services → Library** enable the APIs you want:
+   - **Google Calendar API** — API event sync (free)
+   - **Geocoding API** + **Routes API** — traffic-aware travel (billed per
+     request, but this widget's cadence sits well inside the monthly free
+     credit; a billing account must be attached)
+2. For calendar sync: **OAuth consent screen** (External is fine, add yourself
+   as a test user — note Google expires test-mode refresh tokens after 7 days
+   unless you publish the app), then **Credentials → OAuth client ID →
+   Desktop app**. Copy the client ID and secret.
+3. For travel: **Credentials → API key**, restricted to Geocoding + Routes.
+4. Fill in `~/.chappy/calendar.json`:
 
 ```json
 {
-  "googleClientId": "1234-abc.apps.googleusercontent.com",
-  "googleClientSecret": "GOCSPX-...",
-  "mapsApiKey": "AIza...",
+  "icsUrls": ["https://calendar.google.com/calendar/ical/…/basic.ics"],
+  "homeAddress": "Vinohradská 123, Praha 2",
   "homeCoordinates": { "lat": 50.0755, "lng": 14.4378 },
+  "googleClientId": "1234-abc.apps.googleusercontent.com",
+  "googleClientSecret": "GOCSPX-…",
+  "mapsApiKey": "AIza…",
   "rolloverHour": 17,
   "bufferMinutes": 10,
   "travelMode": "driving",
@@ -54,41 +72,35 @@ this feature is installed. Edit it:
 }
 ```
 
-| Key | Meaning |
-|---|---|
-| `homeCoordinates` | Where travel starts. Static config, never geocoded. |
-| `rolloverHour` | After this local hour (or once today's events are done), the widget shows tomorrow's first event. |
-| `bufferMinutes` | Added on top of travel time — walking to the car, parking. |
-| `travelMode` | `driving`, `transit`, `walking`, or `bicycling`. |
-| `calendarIds` | `"primary"` and/or full calendar addresses like `"family@group.calendar.google.com"`. |
+With client credentials present, the widget settings show a **Connect**
+button; approving the consent page in your browser finishes the link. Access
+is read-only (`calendar.readonly`); tokens are stored in
+`~/.chappy/calendar-tokens.json`, encrypted with the OS keychain when
+available. ICS links and the Google API can run side by side (use different
+calendars in each, or events appear twice).
 
-Edits apply on the widget's next poll (≤ 60 s) — no restart needed.
+</details>
 
-## 5. Connect
+## Behavior reference
 
-Add the **Leave By** widget to the mirror canvas (install
-`widgets/dist/leave-by-<version>.zip` via **Chappy → Widgets → Quick Add** if it
-isn't in the catalog yet). It will show **Connect Google Calendar** — the
-button opens Google's consent page in your system browser; approve it and the
-widget starts rendering within a few seconds.
+| Setting | Meaning | Default |
+|---|---|---|
+| `rolloverHour` | After this local hour — or once today's events are done — the widget looks at tomorrow's first event. | 17 |
+| `bufferMinutes` | Added on top of travel time: walking to the car, parking. | 10 |
+| `calendarIds` | Google-API-mode calendars (`"primary"` or full calendar addresses). | `["primary"]` |
 
-Access is read-only (`calendar.readonly`). Tokens are stored in
-`~/.chappy/calendar-tokens.json`, encrypted with the OS keychain
-(Electron `safeStorage`) when available. To disconnect, revoke access at
-<https://myaccount.google.com/permissions> — the widget will fall back to the
-connect screen on its next refresh (or delete the tokens file).
+`rolloverHour` and `bufferMinutes` are hand-edited in the JSON; everything
+else is in the widget settings. Edits apply on the next poll (≤ 60 s).
 
-## How it refreshes
-
-| Thing | Cadence |
+| Refresh | Cadence |
 |---|---|
 | Calendar events | every 15 min |
-| Travel time, event more than 2 h away | every 30 min, predictive traffic |
-| Travel time, event within 2 h | every 10 min, live traffic |
+| Travel (Google tier), event > 2 h away | every 30 min, predictive traffic |
+| Travel (Google tier), event < 2 h away | every 10 min, live traffic |
+| Travel (keyless tier) | every 10–30 min, static durations |
 | Countdown | every second, in the widget, no network |
 
-Refreshes are lazy — they only happen while a widget is polling, so a mirror
-that is off costs zero API calls. Geocoded addresses are cached in
-`~/.chappy/calendar-geocode.json` indefinitely. When Google is unreachable the
-widget keeps showing the last good data with a small "updated HH:MM" marker
-instead of blanking.
+Refreshes are lazy — a mirror that is off costs zero API calls. Geocoded
+addresses cache in `~/.chappy/calendar-geocode.json` indefinitely. When a
+source is unreachable the widget keeps the last good data with a small
+"updated HH:MM" marker instead of blanking.

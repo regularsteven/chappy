@@ -1,0 +1,13 @@
+{
+  "id": "calendar",
+  "name": "Calendar",
+  "version": "0.1.0",
+  "description": "Your agenda for today, the week, or what's up next — with a leave-by countdown when an event needs travel.",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "author": "Chappy",
+  "tags": ["calendar", "time"],
+  "defaultSize": { "width": 420, "height": 340 },
+  "minSize": { "width": 300, "height": 220 },
+  "multiInstance": true
+}
