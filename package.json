@@ -31,6 +31,7 @@
   "license": "MIT",
   "dependencies": {
     "extract-zip": "^2.0.1",
+    "node-ical": "^0.27.1",
     "vue": "^3.4.0"
   },
   "devDependencies": {
@@ -78,7 +79,10 @@
     },
     "win": {
       "icon": "resources/chappy-logo.png",
-      "target": ["nsis", "portable"]
+      "target": [
+        "nsis",
+        "portable"
+      ]
     }
   }
 }
