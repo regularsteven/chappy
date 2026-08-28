@@ -1,8 +1,9 @@
 const fs = require('node:fs');
 const os = require('node:os');
-const { app, BrowserWindow, ipcMain, nativeImage, net, protocol, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, nativeImage, net, protocol, session, shell } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('node:url');
+const extractZip = require('extract-zip');
 const vueUpdate = require('./vue-update.js');
 
 if (app.setName) {
@@ -17,6 +18,16 @@ const CONFIG_VERSION = 1;
 const CHAPPY_DIR = path.join(os.homedir(), '.chappy');
 const CONFIG_PATH = path.join(CHAPPY_DIR, 'config.json');
 const ICONS_DIR = path.join(CHAPPY_DIR, 'icons');
+const WIDGETS_DIR = path.join(CHAPPY_DIR, 'widgets');
+// All packaged-widget webviews share this session so one protocol registration
+// serves them all; per-widget isolation comes from per-id origins instead.
+// The partition, id pattern, and geometry limits must match the ESM copies in
+// src/renderer/data/widgetCatalog.core.mjs (this CJS file cannot import them).
+const WIDGET_SESSION_PARTITION = 'persist:chappy-widgets';
+const WIDGET_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const WIDGET_ZIP_MAX_BYTES = 20 * 1024 * 1024;
+// Ids of built-in native widgets; packages may not claim them.
+const RESERVED_WIDGET_IDS = new Set(['clock']);
 const APP_ICON_PNG = path.join(__dirname, '../resources/chappy-logo.png');
 const BADGE_MAX_DISPLAY = 9;
 let currentAppBadgeCount = 0;
@@ -189,6 +200,11 @@ const sanitizeMirrorWindow = (value) => {
   };
 };
 
+const PACKAGE_WIDGET_MIN_WIDTH = 120;
+const PACKAGE_WIDGET_MIN_HEIGHT = 80;
+const PACKAGE_WIDGET_DEFAULT_WIDTH = 360;
+const PACKAGE_WIDGET_DEFAULT_HEIGHT = 280;
+
 const sanitizeMirrorWidgets = (input) => {
   if (!Array.isArray(input)) {
     return [];
@@ -196,18 +212,42 @@ const sanitizeMirrorWidgets = (input) => {
   const ids = new Set();
   return input
     .map((widget, index) => {
-      if (!isObject(widget) || widget.type !== 'clock') {
+      if (!isObject(widget)) {
+        return null;
+      }
+      // Validate the type before allocating the unique id, so rejected
+      // entries cannot force a rename onto a valid sibling with the same id.
+      const isClock = widget.type === 'clock';
+      const packageWidgetId =
+        widget.type === 'package' &&
+        typeof widget.widgetId === 'string' &&
+        WIDGET_ID_PATTERN.test(widget.widgetId)
+          ? widget.widgetId
+          : '';
+      if (!isClock && !packageWidgetId) {
         return null;
       }
       const idSeed =
         typeof widget.id === 'string' && widget.id.trim() ? widget.id : `widget-${index + 1}`;
-      return {
+      const base = {
         id: ensureUnique(idSeed, ids, `widget-${index + 1}`),
-        type: 'clock',
-        timeZone: typeof widget.timeZone === 'string' ? widget.timeZone.trim().slice(0, 64) : '',
         x: clampNumber(widget.x, 48, 0, MIRROR_COORD_MAX),
         y: clampNumber(widget.y, 48, 0, MIRROR_COORD_MAX),
         z: clampNumber(widget.z, 1, 1, 1000000)
+      };
+      if (isClock) {
+        return {
+          ...base,
+          type: 'clock',
+          timeZone: typeof widget.timeZone === 'string' ? widget.timeZone.trim().slice(0, 64) : ''
+        };
+      }
+      return {
+        ...base,
+        type: 'package',
+        widgetId: packageWidgetId,
+        width: clampNumber(widget.width, PACKAGE_WIDGET_DEFAULT_WIDTH, PACKAGE_WIDGET_MIN_WIDTH, MIRROR_COORD_MAX),
+        height: clampNumber(widget.height, PACKAGE_WIDGET_DEFAULT_HEIGHT, PACKAGE_WIDGET_MIN_HEIGHT, MIRROR_COORD_MAX)
       };
     })
     .filter(Boolean);
@@ -389,7 +429,8 @@ const readConfig = () => {
 let configState = readConfig();
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'chappy-icon', privileges: { standard: true, secure: true, supportFetchAPI: true } }
+  { scheme: 'chappy-icon', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: 'chappy-widget', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } }
 ]);
 
 const shouldUseSystemBrowserLinks = () => configState.useSystemBrowserLinks !== false;
@@ -644,6 +685,212 @@ ipcMain.handle('chappy:fetch-and-save-icon', async (_event, { iconUrl, tabId }) 
   return { path: relativePath.replace(/\\/g, '/') };
 });
 
+// ---- Widget packages -------------------------------------------------------
+// Installed widgets live in ~/.chappy/widgets/<id>/ and are served through the
+// chappy-widget://<id>/<path> protocol, so packages install at runtime without
+// an app rebuild. See widgets/README.md for the package format.
+
+const sanitizeWidgetAssetPath = (value, widgetDir) => {
+  if (typeof value !== 'string' || !value.trim()) {
+    return '';
+  }
+  const normalized = path.normalize(value.trim()).replace(/\\/g, '/');
+  if (path.isAbsolute(normalized) || normalized.split('/').includes('..')) {
+    return '';
+  }
+  const fullPath = path.join(widgetDir, normalized);
+  if (!fullPath.startsWith(widgetDir + path.sep) || !fs.existsSync(fullPath)) {
+    return '';
+  }
+  return normalized;
+};
+
+const sanitizeWidgetSize = (value, fallbackWidth, fallbackHeight, minWidth, minHeight) => ({
+  width: clampNumber(value?.width, fallbackWidth, minWidth, 4000),
+  height: clampNumber(value?.height, fallbackHeight, minHeight, 4000)
+});
+
+const sanitizeWidgetManifest = (input, widgetDir) => {
+  if (!isObject(input)) {
+    return null;
+  }
+  const id = typeof input.id === 'string' && WIDGET_ID_PATTERN.test(input.id) ? input.id : '';
+  const name = typeof input.name === 'string' ? input.name.trim().slice(0, 64) : '';
+  const entry = sanitizeWidgetAssetPath(input.entry, widgetDir);
+  if (!id || !name || !entry) {
+    return null;
+  }
+  const tags = Array.isArray(input.tags)
+    ? input.tags.filter((tag) => typeof tag === 'string' && WIDGET_ID_PATTERN.test(tag)).slice(0, 8)
+    : [];
+  return {
+    id,
+    name,
+    entry,
+    version: typeof input.version === 'string' ? input.version.trim().slice(0, 32) : '',
+    description: typeof input.description === 'string' ? input.description.trim().slice(0, 200) : '',
+    author: typeof input.author === 'string' ? input.author.trim().slice(0, 64) : '',
+    icon: sanitizeWidgetAssetPath(input.icon, widgetDir),
+    tags,
+    defaultSize: sanitizeWidgetSize(
+      input.defaultSize,
+      PACKAGE_WIDGET_DEFAULT_WIDTH,
+      PACKAGE_WIDGET_DEFAULT_HEIGHT,
+      PACKAGE_WIDGET_MIN_WIDTH,
+      PACKAGE_WIDGET_MIN_HEIGHT
+    ),
+    minSize: sanitizeWidgetSize(input.minSize, 220, 140, PACKAGE_WIDGET_MIN_WIDTH, PACKAGE_WIDGET_MIN_HEIGHT),
+    multiInstance: input.multiInstance !== false
+  };
+};
+
+const readWidgetManifest = (widgetDir) => {
+  const manifestPath = path.join(widgetDir, 'widget.json');
+  if (!fs.existsSync(manifestPath)) {
+    return null;
+  }
+  try {
+    return sanitizeWidgetManifest(JSON.parse(fs.readFileSync(manifestPath, 'utf8')), widgetDir);
+  } catch (error) {
+    return null;
+  }
+};
+
+// Accepts widget.json at the ZIP root or inside a single top-level folder.
+const resolveWidgetPackageRoot = (extractDir) => {
+  if (fs.existsSync(path.join(extractDir, 'widget.json'))) {
+    return extractDir;
+  }
+  const entries = fs
+    .readdirSync(extractDir, { withFileTypes: true })
+    .filter((entry) => !entry.name.startsWith('.') && entry.name !== '__MACOSX');
+  if (entries.length === 1 && entries[0].isDirectory()) {
+    const candidate = path.join(extractDir, entries[0].name);
+    if (fs.existsSync(path.join(candidate, 'widget.json'))) {
+      return candidate;
+    }
+  }
+  return null;
+};
+
+const listInstalledWidgets = () => {
+  if (!fs.existsSync(WIDGETS_DIR)) {
+    return [];
+  }
+  return fs
+    .readdirSync(WIDGETS_DIR, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        entry.isDirectory() && WIDGET_ID_PATTERN.test(entry.name) && !RESERVED_WIDGET_IDS.has(entry.name)
+    )
+    .map((entry) => {
+      const manifest = readWidgetManifest(path.join(WIDGETS_DIR, entry.name));
+      // The folder name is what the protocol serves, so a mismatched manifest
+      // id would produce broken entry URLs — skip such folders entirely.
+      return manifest && manifest.id === entry.name ? manifest : null;
+    })
+    .filter(Boolean);
+};
+
+const toBuffer = (input) => {
+  if (Buffer.isBuffer(input)) {
+    return input;
+  }
+  if (input instanceof ArrayBuffer) {
+    return Buffer.from(input);
+  }
+  if (ArrayBuffer.isView(input)) {
+    return Buffer.from(input.buffer, input.byteOffset, input.byteLength);
+  }
+  return null;
+};
+
+ipcMain.handle('chappy:list-widgets', () => listInstalledWidgets());
+
+ipcMain.handle('chappy:install-widget', async (_event, payload) => {
+  const data = toBuffer(payload?.buffer);
+  if (!data || data.length === 0) {
+    return { error: 'The dropped file is empty.' };
+  }
+  if (data.length > WIDGET_ZIP_MAX_BYTES) {
+    return { error: 'Widget package is too large (max 20 MB).' };
+  }
+  const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'chappy-widget-'));
+  const zipPath = path.join(staging, 'package.zip');
+  const extractDir = path.join(staging, 'extracted');
+  try {
+    await fs.promises.writeFile(zipPath, data);
+    fs.mkdirSync(extractDir, { recursive: true });
+    await extractZip(zipPath, { dir: extractDir });
+    const packageRoot = resolveWidgetPackageRoot(extractDir);
+    const manifest = packageRoot ? readWidgetManifest(packageRoot) : null;
+    if (!manifest) {
+      return { error: 'Not a widget package: widget.json is missing or invalid.' };
+    }
+    if (RESERVED_WIDGET_IDS.has(manifest.id)) {
+      return { error: `"${manifest.id}" is reserved for a built-in widget — pick another id.` };
+    }
+    const targetDir = path.join(WIDGETS_DIR, manifest.id);
+    // Stage the validated package next to its destination first, so the final
+    // swap is a rename and a failed install never destroys an existing one.
+    const pendingDir = `${targetDir}.installing`;
+    fs.mkdirSync(WIDGETS_DIR, { recursive: true });
+    await fs.promises.rm(pendingDir, { recursive: true, force: true });
+    try {
+      await fs.promises.rename(packageRoot, pendingDir);
+    } catch (error) {
+      // Cross-volume tmpdir: fall back to a copy into the pending dir.
+      await fs.promises.cp(packageRoot, pendingDir, { recursive: true });
+    }
+    const replaced = fs.existsSync(targetDir);
+    await fs.promises.rm(targetDir, { recursive: true, force: true });
+    await fs.promises.rename(pendingDir, targetDir);
+    return { manifest, replaced };
+  } catch (error) {
+    return { error: 'Could not read that file as a widget ZIP.' };
+  } finally {
+    fs.rmSync(staging, { recursive: true, force: true });
+  }
+});
+
+ipcMain.handle('chappy:remove-widget', (_event, payload) => {
+  const widgetId = payload?.widgetId;
+  if (typeof widgetId !== 'string' || !WIDGET_ID_PATTERN.test(widgetId)) {
+    return { error: 'Invalid widget id.' };
+  }
+  fs.rmSync(path.join(WIDGETS_DIR, widgetId), { recursive: true, force: true });
+  return { ok: true };
+});
+
+const handleWidgetProtocol = (request) => {
+  try {
+    const url = new URL(request.url);
+    const widgetId = url.hostname;
+    if (!WIDGET_ID_PATTERN.test(widgetId)) {
+      return new Response(null, { status: 400 });
+    }
+    const widgetDir = path.join(WIDGETS_DIR, widgetId);
+    const relativePath = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
+    const fullPath = path.normalize(path.join(widgetDir, relativePath));
+    const stats = fs.statSync(fullPath, { throwIfNoEntry: false });
+    if (!fullPath.startsWith(widgetDir + path.sep) || !stats || !stats.isFile()) {
+      return new Response(null, { status: 404 });
+    }
+    // The lexical check above cannot see through symlinks a package may ship;
+    // resolving to real paths keeps a link from serving files outside the
+    // widget folder.
+    const realPath = fs.realpathSync(fullPath);
+    const realWidgetDir = fs.realpathSync(widgetDir);
+    if (!realPath.startsWith(realWidgetDir + path.sep)) {
+      return new Response(null, { status: 404 });
+    }
+    return net.fetch(pathToFileURL(realPath).toString());
+  } catch (error) {
+    return new Response(null, { status: 404 });
+  }
+};
+// ---------------------------------------------------------------------------
+
 ipcMain.handle('chappy:check-for-update', async () => {
   const result = await vueUpdate.checkForUpdate(configState);
   configState.lastUpdateCheck = new Date().toISOString();
@@ -708,6 +955,16 @@ const createMainWindow = () => {
     params.useragent = getCompatibilityUserAgent();
   });
 
+  // The renderer is a single-page app that never changes URL; the only
+  // renderer-initiated navigation is same-URL (vite dev full reload). Anything
+  // else — e.g. a file dropped past the widget Quick Add zone's own guards —
+  // would tear down the whole UI, so block it here as well.
+  browserWindow.webContents.on('will-navigate', (event, targetUrl) => {
+    if (targetUrl !== browserWindow.webContents.getURL()) {
+      event.preventDefault();
+    }
+  });
+
   browserWindow.once('ready-to-show', () => browserWindow.show());
 
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -727,6 +984,11 @@ app.whenReady().then(() => {
       writeConfig(configState);
     });
   }
+
+  // Widget webviews run in their own partition, whose session resolves
+  // protocols independently of the default session — register on both.
+  protocol.handle('chappy-widget', handleWidgetProtocol);
+  session.fromPartition(WIDGET_SESSION_PARTITION).protocol.handle('chappy-widget', handleWidgetProtocol);
 
   protocol.handle('chappy-icon', (request) => {
     try {

@@ -1,0 +1,97 @@
+# Chappy Widget Packages
+
+Widgets are self-contained HTML packages that render on the Mirror canvas inside
+sandboxed `<webview>` elements. They are installed at runtime — dropping a ZIP on
+**Chappy → Widgets → Quick Add** is enough; no rebuild of the Chappy app is needed.
+
+## Package layout
+
+A widget package is a ZIP archive containing, at its root (or inside a single
+top-level folder — both layouts are accepted):
+
+```text
+weather.zip
+├── widget.json        # manifest (required)
+├── index.html         # entry point (required, name set by manifest "entry")
+├── icon.svg           # optional icon (svg or png)
+└── ...                # any other assets (css, js, images), referenced relatively
+```
+
+Installed packages are extracted to `~/.chappy/widgets/<id>/` and served to the
+renderer via the `chappy-widget://<id>/<path>` protocol. Each widget id is its own
+origin, so `localStorage` and friends are isolated per widget, and relative asset
+paths inside the entry HTML resolve normally.
+
+## widget.json manifest
+
+```json
+{
+  "id": "weather",
+  "name": "Weather",
+  "version": "0.1.0",
+  "description": "Current conditions and a 3 day forecast for a chosen city.",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "author": "Chappy",
+  "tags": ["weather"],
+  "defaultSize": { "width": 360, "height": 320 },
+  "minSize": { "width": 280, "height": 240 },
+  "multiInstance": true
+}
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `id` | yes | Stable slug, `[a-z0-9-]`, max 64 chars. Installing a ZIP with an existing id replaces that widget in place (instances survive, so this is the update path). Built-in widget ids (`clock`) are reserved. |
+| `name` | yes | Display name shown in catalogs. |
+| `entry` | yes | Relative path to the HTML entry point. Must exist in the package. |
+| `version` | no | Free-form string, shown in the catalog. |
+| `description` | no | One or two sentences for the catalog card. |
+| `icon` | no | Relative path to an `.svg` or `.png` inside the package. Falls back to the generic widget icon. |
+| `author` | no | Free-form string. |
+| `tags` | no | Lowercase slugs used by the Widgets tab filter bar (e.g. `time`, `weather`, `info`). Unknown tags still work — they get a neutral filter chip. |
+| `defaultSize` | no | Initial `{ width, height }` in px when an instance is added (default 360×280). |
+| `minSize` | no | Resize floor in px (default 220×140). |
+| `multiInstance` | no | Default `true`. Set `false` to limit the widget to one placed instance. |
+
+## Runtime contract
+
+The entry page is loaded as:
+
+```text
+chappy-widget://<id>/<entry>?instance=<instanceId>&theme=mirror
+```
+
+- `instance` — unique id of this placed instance. Use it to namespace per-instance
+  state (e.g. `localStorage.setItem('mywidget:' + instanceId, ...)`), which is how
+  one widget type supports several instances with different settings.
+- `theme` — always `mirror` today. Style for a pure-black canvas: black or
+  transparent-dark background, muted slate text, light up as few pixels as possible.
+- Network access works normally (`fetch` to HTTPS APIs that allow CORS). The
+  reference Weather widget uses the keyless Open-Meteo APIs.
+- The page has no Node or Chappy APIs — it is plain sandboxed web content.
+
+Chrome (drag handle, resize handle, remove button) is drawn by Chappy around the
+webview; the widget only renders its content. Size changes arrive as normal
+window resizes — use responsive CSS rather than fixed layouts.
+
+## Building a package
+
+`widgets/` in this repo holds widget sources, one folder per widget. To produce an
+installable ZIP from a source folder:
+
+```bash
+npm run pack:widget weather
+```
+
+This writes `widgets/dist/weather-<version>.zip` (the folder name is the argument).
+Drag that file onto **Chappy → Widgets → Quick Add** to install or update it.
+
+## Security posture (deliberate, for now)
+
+This is a UX/architecture prototype: manifests are validated and file serving is
+path-contained (symlinks are resolved and refused when they point outside the
+widget folder), but widget HTML is not CSP-restricted, not signed, and can reach
+the network. Do not install packages from untrusted sources. Hardening (CSP
+injection, permission prompts, an audited bridge API instead of raw web content)
+is future work and intentionally out of scope.
