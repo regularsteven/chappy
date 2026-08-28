@@ -169,6 +169,20 @@
               Configure
             </button>
             <button
+              id="chappy-subtab-widgets"
+              type="button"
+              class="rounded-xl px-4 py-2 text-sm font-semibold transition"
+              :class="[
+                chappyWorkspaceTab === 'widgets'
+                  ? 'bg-slate-700 text-white'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white',
+                isMirrorMode ? '' : 'opacity-60'
+              ]"
+              @click="setChappyWorkspaceTab('widgets')"
+            >
+              Widgets
+            </button>
+            <button
               id="chappy-subtab-settings"
               type="button"
               class="rounded-xl px-4 py-2 text-sm font-semibold transition"
@@ -279,6 +293,57 @@
               </ul>
               <div v-else class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-sm text-slate-400">
                 No chat services are configured yet. Use Configure to add your first client.
+              </div>
+            </div>
+
+            <div id="widget-library-panel" class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-[0_20px_40px_rgba(15,23,42,0.65)]">
+              <div class="flex items-center justify-between gap-4">
+                <h2 class="text-lg font-semibold text-white">Widgets</h2>
+                <button
+                  id="go-to-widgets-link"
+                  type="button"
+                  class="rounded-full border border-sky-500/50 bg-sky-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-sky-200 transition hover:bg-sky-500/20"
+                  @click="setChappyWorkspaceTab('widgets')"
+                >
+                  Add widgets
+                </button>
+              </div>
+              <p v-if="!isMirrorMode" class="mt-3 text-sm text-slate-400">
+                Enable Mirror display to use widgets.
+              </p>
+              <ul v-if="mirrorWidgets.length" class="mt-4 space-y-3">
+                <li
+                  v-for="widget in mirrorWidgets"
+                  :key="widget.id"
+                  class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 p-3"
+                  :data-ref="`widget-library-item-${widget.id}`"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-slate-800 bg-slate-900">
+                      <img
+                        :src="widgetInstanceIcon(widget)"
+                        alt=""
+                        class="h-8 w-8 object-contain"
+                        loading="lazy"
+                        @error="handleIconError"
+                      >
+                    </div>
+                    <div class="space-y-0.5">
+                      <p class="text-sm font-semibold text-white">{{ widgetInstanceLabel(widget) }}</p>
+                      <p class="text-xs text-slate-500">{{ widgetInstanceDetail(widget) }}</p>
+                    </div>
+                  </div>
+                  <button
+                    class="rounded-full border border-slate-700 px-2 text-rose-300 hover:bg-rose-400/10"
+                    data-ref="widget-library-remove-button"
+                    @click="removeMirrorWidget(widget.id)"
+                  >
+                    ✕
+                  </button>
+                </li>
+              </ul>
+              <div v-else-if="isMirrorMode" class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/80 p-4 text-sm text-slate-400">
+                No widgets on your mirror yet. Add clocks, weather, and more from the Widgets tab.
               </div>
             </div>
           </div>
@@ -430,6 +495,40 @@
               </div>
             </div>
 
+            <div id="configure-widgets-panel" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
+              <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p class="text-xs uppercase tracking-widest text-slate-500">Widgets</p>
+                  <h2 class="text-lg font-semibold text-white">Mirror canvas widgets</h2>
+                  <p class="text-sm text-slate-400">
+                    <template v-if="isMirrorMode">
+                      Lightweight cards that float on the Mirror canvas. Install more from the Widgets tab.
+                    </template>
+                    <template v-else>
+                      Enable Mirror display to use widgets.
+                    </template>
+                  </p>
+                </div>
+                <button
+                  id="configure-open-widgets-link"
+                  type="button"
+                  class="shrink-0 rounded-full border border-sky-500/50 bg-sky-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-sky-200 transition hover:bg-sky-500/20"
+                  @click="setChappyWorkspaceTab('widgets')"
+                >
+                  Open Widgets
+                </button>
+              </div>
+              <WidgetCatalog
+                class="mt-4"
+                :entries="widgetCatalogEntries"
+                :show-filters="false"
+                :add-enabled="isMirrorMode"
+                :counts="widgetCountById"
+                @add="addWidgetFromCatalog"
+                @uninstall="uninstallWidget"
+              />
+            </div>
+
             <form
               id="custom-tab-form"
               @submit.prevent="addTab"
@@ -473,6 +572,92 @@
                 Add tab
               </button>
             </form>
+          </div>
+
+          <div v-else-if="chappyWorkspaceTab === 'widgets'" id="widgets-view" class="space-y-6">
+            <div
+              v-if="!isMirrorMode"
+              id="widgets-disabled-panel"
+              class="rounded-2xl border border-slate-800 bg-slate-900/60 p-10 text-center shadow-[0_20px_40px_rgba(2,6,23,0.7)]"
+            >
+              <p class="text-xs uppercase tracking-widest text-slate-500">Widgets</p>
+              <h2 class="mt-2 text-lg font-semibold text-white">Enable Mirror display to use widgets</h2>
+              <p class="mx-auto mt-2 max-w-md text-sm text-slate-400">
+                Widgets float on the Mirror canvas alongside your services. Switch the layout mode to
+                Mirror and this tab lights up.
+              </p>
+              <div class="mt-5 flex flex-wrap items-center justify-center gap-3">
+                <button
+                  id="enable-mirror-from-widgets"
+                  type="button"
+                  class="rounded-2xl bg-gradient-to-r from-sky-500 to-violet-500 px-5 py-2 text-sm font-semibold uppercase tracking-widest text-white transition hover:opacity-90"
+                  @click="enableMirrorMode"
+                >
+                  Enable Mirror display
+                </button>
+                <button
+                  type="button"
+                  class="rounded-2xl border border-slate-600 px-5 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+                  @click="setChappyWorkspaceTab('settings')"
+                >
+                  Open Settings
+                </button>
+              </div>
+            </div>
+
+            <template v-else>
+              <div id="widget-catalog-panel" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
+                <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p class="text-xs uppercase tracking-widest text-slate-500">Available widgets</p>
+                    <h2 class="text-lg font-semibold text-white">Tap to add</h2>
+                    <p class="text-sm text-slate-400">
+                      Widgets float on the Mirror canvas — add as many as you need, then drag and
+                      resize them in place. Added widgets are listed under Your Chappy.
+                    </p>
+                  </div>
+                  <div
+                    id="widget-quick-add"
+                    class="widget-quick-add flex shrink-0 flex-col items-center justify-center gap-1 rounded-2xl border border-dashed px-5 py-3 text-center transition"
+                    :class="isDraggingWidgetFile ? 'border-sky-500 bg-sky-500/10' : 'border-slate-700 bg-slate-950/40'"
+                    @dragover.prevent="isDraggingWidgetFile = true"
+                    @dragleave="handleWidgetDragLeave"
+                    @drop.prevent="handleWidgetDrop"
+                  >
+                    <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">Quick Add</span>
+                    <p class="text-xs text-slate-500">
+                      Drop a widget ZIP here, or
+                      <label class="cursor-pointer font-semibold text-sky-400 underline decoration-sky-400/70 underline-offset-2 hover:text-sky-300">
+                        browse
+                        <input
+                          id="widget-zip-input"
+                          type="file"
+                          accept=".zip,application/zip"
+                          class="hidden"
+                          @change="handleWidgetFileInput"
+                        />
+                      </label>
+                    </p>
+                    <p v-if="widgetInstallStatus" class="text-xs" :class="widgetInstallStatus === 'Installing…' ? 'text-slate-400' : 'text-rose-400'">
+                      {{ widgetInstallStatus }}
+                    </p>
+                  </div>
+                </div>
+                <WidgetCatalog
+                  class="mt-4"
+                  :entries="widgetCatalogEntries"
+                  :show-filters="true"
+                  :add-enabled="true"
+                  :counts="widgetCountById"
+                  @add="addWidgetFromCatalog"
+                  @uninstall="uninstallWidget"
+                />
+              </div>
+              <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 text-sm text-slate-400 shadow-[0_20px_40px_rgba(15,23,42,0.65)]">
+                Build your own: a widget is a ZIP with a <code class="text-slate-300">widget.json</code> manifest and an HTML entry
+                point — see <code class="text-slate-300">widgets/README.md</code> in the Chappy repository for the package format.
+              </div>
+            </template>
           </div>
 
           <div v-else id="settings-view" class="space-y-6">
@@ -843,30 +1028,42 @@
               ></webview>
             </MirrorWindow>
 
-            <ClockWidget
-              v-for="widget in mirrorWidgets"
-              :key="widget.id"
-              :widget="widget"
-              @focus="focusMirrorWidget(widget.id)"
-              @remove="removeMirrorWidget(widget.id)"
-              @update:rect="(rect) => updateMirrorWidgetRect(widget.id, rect)"
-              @update:time-zone="(zone) => setMirrorWidgetTimeZone(widget.id, zone)"
-            />
+            <template v-for="widget in mirrorWidgets" :key="widget.id">
+              <ClockWidget
+                v-if="widget.type === 'clock'"
+                :widget="widget"
+                @focus="focusMirrorWidget(widget.id)"
+                @remove="removeMirrorWidget(widget.id)"
+                @update:rect="(rect) => updateMirrorWidgetRect(widget.id, rect)"
+                @update:time-zone="(zone) => setMirrorWidgetTimeZone(widget.id, zone)"
+              />
+              <PackageWidget
+                v-else-if="widget.type === 'package'"
+                :widget="widget"
+                :manifest="installedWidgetById[widget.widgetId] || null"
+                :reload-key="widgetReloadNonces[widget.widgetId] || 0"
+                :min-width="packageWidgetMinWidth(widget)"
+                :min-height="packageWidgetMinHeight(widget)"
+                @focus="focusMirrorWidget(widget.id)"
+                @remove="removeMirrorWidget(widget.id)"
+                @update:rect="(rect) => updateMirrorWidgetRect(widget.id, rect)"
+              />
+            </template>
           </div>
 
           <p
             v-if="!mirrorOpenTabs.length && !mirrorWidgets.length"
             class="mirror-canvas-hint pointer-events-none absolute inset-0 flex items-center justify-center text-xs uppercase tracking-[0.35em]"
           >
-            Select a service or add a clock
+            Select a service or add widgets
           </p>
 
           <button
-            id="mirror-add-clock-button"
+            id="mirror-add-widget-button"
             type="button"
-            title="Add clock"
+            title="Add widgets"
             class="absolute bottom-4 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border text-lg leading-none opacity-40 transition hover:opacity-100"
-            @click="addClockWidget"
+            @click="goToWidgetsTab"
           >
             +
           </button>
@@ -918,8 +1115,18 @@
 import SettingsModal from './components/SettingsModal.vue';
 import MirrorWindow from './components/MirrorWindow.vue';
 import ClockWidget from './components/ClockWidget.vue';
+import PackageWidget from './components/PackageWidget.vue';
+import WidgetCatalog from './components/WidgetCatalog.vue';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { accentColors, taxonomies, serviceCatalog } from './data/serviceCatalog.mjs';
+import {
+  builtinWidgets,
+  WIDGET_ID_PATTERN,
+  PACKAGE_WIDGET_MIN_WIDTH,
+  PACKAGE_WIDGET_MIN_HEIGHT,
+  PACKAGE_WIDGET_DEFAULT_WIDTH,
+  PACKAGE_WIDGET_DEFAULT_HEIGHT,
+} from './data/widgetCatalog.mjs';
 import defaultIconUrl from './assets/icons/custom.svg?url';
 import chappyLogoUrl from '../../resources/chappy-logo.svg?url';
 
@@ -971,7 +1178,7 @@ const themePreferenceOptions = [
   { value: 'dark', label: 'Dark' },
   { value: 'system', label: 'System' },
 ];
-const chappyWorkspaceTabValues = new Set(['your-chappy', 'configure', 'settings']);
+const chappyWorkspaceTabValues = new Set(['your-chappy', 'configure', 'widgets', 'settings']);
 const themePreferenceValues = new Set(themePreferenceOptions.map((option) => option.value));
 const normalizeThemePreference = (value) => (themePreferenceValues.has(value) ? value : 'system');
 const themePreference = ref('system');
@@ -984,6 +1191,18 @@ const normalizeDisplayMode = (value) => (displayModeValues.has(value) ? value : 
 const displayMode = ref('desktop');
 const isMirrorMode = computed(() => displayMode.value === 'mirror');
 const mirrorWidgets = ref([]);
+const installedWidgets = ref([]);
+const widgetInstallStatus = ref('');
+const isDraggingWidgetFile = ref(false);
+// Per-widget-id nonces, bumped after a (re)install so that widget's mounted
+// webviews remount and pick up the new files without disturbing the others.
+const widgetReloadNonces = ref({});
+
+// A file dropped outside the widget Quick Add zone must never navigate the
+// renderer away from the app; the zone's own handlers run before these.
+const suppressWindowDrop = (event) => {
+  event.preventDefault();
+};
 const mirrorCanvasRef = ref(null);
 const mirrorWebviewRefs = new Map();
 // Launch URLs are snapshotted per webview mount: binding :src reactively would
@@ -1309,18 +1528,40 @@ const hydrateMirrorWindow = (input) => {
 };
 
 const hydrateMirrorWidget = (input) => {
-  if (!input || typeof input !== 'object' || input.type !== 'clock') {
+  if (!input || typeof input !== 'object') {
     return null;
   }
   const id = typeof input.id === 'string' && input.id.trim() ? input.id.trim() : `widget-${suffix()}`;
-  return {
+  const base = {
     id,
-    type: 'clock',
-    timeZone: typeof input.timeZone === 'string' ? input.timeZone.trim() : '',
     x: Math.max(0, sanitizeFiniteNumber(input.x, 48)),
     y: Math.max(0, sanitizeFiniteNumber(input.y, 48)),
     z: Math.max(1, sanitizeFiniteNumber(input.z, 1)),
   };
+  if (input.type === 'clock') {
+    return {
+      ...base,
+      type: 'clock',
+      timeZone: typeof input.timeZone === 'string' ? input.timeZone.trim() : '',
+    };
+  }
+  if (input.type === 'package') {
+    const widgetId =
+      typeof input.widgetId === 'string' && WIDGET_ID_PATTERN.test(input.widgetId)
+        ? input.widgetId
+        : '';
+    if (!widgetId) {
+      return null;
+    }
+    return {
+      ...base,
+      type: 'package',
+      widgetId,
+      width: Math.max(PACKAGE_WIDGET_MIN_WIDTH, sanitizeFiniteNumber(input.width, PACKAGE_WIDGET_DEFAULT_WIDTH)),
+      height: Math.max(PACKAGE_WIDGET_MIN_HEIGHT, sanitizeFiniteNumber(input.height, PACKAGE_WIDGET_DEFAULT_HEIGHT)),
+    };
+  }
+  return null;
 };
 
 const hydrateTab = (inputTab, index) => {
@@ -1694,6 +1935,199 @@ const addClockWidget = () => {
   ];
 };
 
+const installedWidgetById = computed(() =>
+  installedWidgets.value.reduce((accumulator, manifest) => {
+    accumulator[manifest.id] = manifest;
+    return accumulator;
+  }, {})
+);
+
+const widgetCatalogEntries = computed(() => [
+  ...builtinWidgets.map((widget) => ({ ...widget, source: 'Built-in' })),
+  ...installedWidgets.value.map((manifest) => ({
+    id: manifest.id,
+    kind: 'package',
+    title: manifest.name,
+    description: manifest.description || 'Installed widget package.',
+    taxonomies: manifest.tags?.length ? manifest.tags : ['custom'],
+    icon: manifest.icon ? `chappy-widget://${manifest.id}/${manifest.icon}` : '',
+    source: manifest.version ? `Installed · v${manifest.version}` : 'Installed',
+  })),
+]);
+
+// Keyed by catalog entry as `${kind}:${id}` so a package can never collide
+// with a built-in widget that shares its id.
+const widgetCountById = computed(() =>
+  mirrorWidgets.value.reduce((accumulator, widget) => {
+    const key = widget.type === 'clock' ? 'native:clock' : `package:${widget.widgetId}`;
+    accumulator[key] = (accumulator[key] || 0) + 1;
+    return accumulator;
+  }, {})
+);
+
+const packageWidgetMinWidth = (widget) =>
+  Math.max(PACKAGE_WIDGET_MIN_WIDTH, installedWidgetById.value[widget.widgetId]?.minSize?.width || 0);
+const packageWidgetMinHeight = (widget) =>
+  Math.max(PACKAGE_WIDGET_MIN_HEIGHT, installedWidgetById.value[widget.widgetId]?.minSize?.height || 0);
+
+const widgetInstanceLabel = (widget) =>
+  widget.type === 'clock' ? 'Clock' : installedWidgetById.value[widget.widgetId]?.name || widget.widgetId;
+
+const widgetInstanceDetail = (widget) => {
+  if (widget.type === 'clock') {
+    return widget.timeZone || 'Local time';
+  }
+  const manifest = installedWidgetById.value[widget.widgetId];
+  if (!manifest) {
+    return 'Package not installed';
+  }
+  return manifest.version ? `Widget package · v${manifest.version}` : 'Widget package';
+};
+
+const widgetInstanceIcon = (widget) => {
+  if (widget.type === 'clock') {
+    return builtinWidgets.find((entry) => entry.id === 'clock')?.icon || defaultIcon;
+  }
+  const manifest = installedWidgetById.value[widget.widgetId];
+  return manifest?.icon ? `chappy-widget://${manifest.id}/${manifest.icon}` : defaultIcon;
+};
+
+const loadInstalledWidgets = async () => {
+  if (typeof chappyApi?.listWidgets !== 'function') {
+    return;
+  }
+  try {
+    const manifests = await chappyApi.listWidgets();
+    installedWidgets.value = Array.isArray(manifests) ? manifests : [];
+  } catch (error) {
+    console.error('Failed to list installed widgets.', error);
+  }
+};
+
+const addPackageWidget = (widgetId) => {
+  const manifest = installedWidgetById.value[widgetId];
+  const width = manifest?.defaultSize?.width || PACKAGE_WIDGET_DEFAULT_WIDTH;
+  const height = manifest?.defaultSize?.height || PACKAGE_WIDGET_DEFAULT_HEIGHT;
+  const stagger = (mirrorWidgets.value.length % 4) * 40;
+  const rect = clampRectToCanvas(
+    { x: 48 + stagger, y: 48 + stagger, width, height },
+    Math.max(PACKAGE_WIDGET_MIN_WIDTH, manifest?.minSize?.width || 0),
+    Math.max(PACKAGE_WIDGET_MIN_HEIGHT, manifest?.minSize?.height || 0)
+  );
+  mirrorWidgets.value = [
+    ...mirrorWidgets.value,
+    {
+      id: `widget-${suffix()}`,
+      type: 'package',
+      widgetId,
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      z: highestMirrorZ() + 1,
+    },
+  ];
+};
+
+const addWidgetFromCatalog = (entry) => {
+  if (!isMirrorMode.value) {
+    showToast('Enable Mirror display to use widgets');
+    return;
+  }
+  if (entry.kind === 'package') {
+    const manifest = installedWidgetById.value[entry.id];
+    if (manifest?.multiInstance === false && (widgetCountById.value[`package:${entry.id}`] || 0) > 0) {
+      showToast(`${entry.title} allows only one instance`);
+      return;
+    }
+    addPackageWidget(entry.id);
+  } else if (entry.id === 'clock') {
+    addClockWidget();
+  } else {
+    return;
+  }
+  showToast(`${entry.title} added to your mirror canvas`);
+};
+
+const uninstallWidget = async (entry) => {
+  if (entry.kind !== 'package' || typeof chappyApi?.removeWidget !== 'function') {
+    return;
+  }
+  try {
+    const result = await chappyApi.removeWidget({ widgetId: entry.id });
+    if (result?.error) {
+      showToast(result.error);
+      return;
+    }
+    await loadInstalledWidgets();
+    showToast(`${entry.title} uninstalled`);
+  } catch (error) {
+    showToast('Could not uninstall widget');
+  }
+};
+
+const installWidgetFile = async (file) => {
+  if (!file) {
+    return;
+  }
+  if (typeof chappyApi?.installWidget !== 'function') {
+    widgetInstallStatus.value = 'Widget install is unavailable in this build.';
+    return;
+  }
+  widgetInstallStatus.value = 'Installing…';
+  try {
+    const buffer = new Uint8Array(await file.arrayBuffer());
+    const result = await chappyApi.installWidget({ name: file.name, buffer });
+    if (result?.error) {
+      widgetInstallStatus.value = result.error;
+      return;
+    }
+    await loadInstalledWidgets();
+    const installedId = result?.manifest?.id;
+    if (installedId) {
+      widgetReloadNonces.value = {
+        ...widgetReloadNonces.value,
+        [installedId]: (widgetReloadNonces.value[installedId] || 0) + 1,
+      };
+    }
+    widgetInstallStatus.value = '';
+    showToast(`${result?.manifest?.name || 'Widget'} ${result?.replaced ? 'updated' : 'installed'}`);
+  } catch (error) {
+    widgetInstallStatus.value = 'Could not install that file.';
+  }
+};
+
+const handleWidgetDrop = (event) => {
+  isDraggingWidgetFile.value = false;
+  void installWidgetFile(event.dataTransfer?.files?.[0]);
+};
+
+const handleWidgetDragLeave = (event) => {
+  // dragleave also fires when crossing onto the zone's own children; only a
+  // move that actually exits the zone should clear the highlight.
+  if (event.currentTarget?.contains?.(event.relatedTarget)) {
+    return;
+  }
+  isDraggingWidgetFile.value = false;
+};
+
+const handleWidgetFileInput = (event) => {
+  const input = event.target;
+  void installWidgetFile(input?.files?.[0]);
+  if (input) {
+    input.value = '';
+  }
+};
+
+const enableMirrorMode = () => {
+  displayMode.value = 'mirror';
+};
+
+const goToWidgetsTab = () => {
+  selectTab('chappy');
+  setChappyWorkspaceTab('widgets');
+};
+
 const removeMirrorWidget = (widgetId) => {
   mirrorWidgets.value = mirrorWidgets.value.filter((widget) => widget.id !== widgetId);
 };
@@ -1709,13 +2143,26 @@ const focusMirrorWidget = (widgetId) => {
 };
 
 const updateMirrorWidgetRect = (widgetId, rect) => {
-  const clamped = clampRectToCanvas(rect, 0, 0);
   const widget = mirrorWidgets.value.find((candidate) => candidate.id === widgetId);
-  if (!widget || (widget.x === clamped.x && widget.y === clamped.y)) {
+  if (!widget) {
+    return;
+  }
+  // Package widgets persist their size; clocks size to content, so only their
+  // position is stored.
+  const isPackage = widget.type === 'package';
+  const clamped = clampRectToCanvas(
+    rect,
+    isPackage ? packageWidgetMinWidth(widget) : 0,
+    isPackage ? packageWidgetMinHeight(widget) : 0
+  );
+  const next = isPackage
+    ? { ...widget, ...clamped }
+    : { ...widget, x: clamped.x, y: clamped.y };
+  if (Object.keys(next).every((key) => next[key] === widget[key])) {
     return;
   }
   mirrorWidgets.value = mirrorWidgets.value.map((candidate) =>
-    candidate.id === widgetId ? { ...candidate, x: clamped.x, y: clamped.y } : candidate
+    candidate.id === widgetId ? next : candidate
   );
 };
 
@@ -1741,8 +2188,8 @@ const clampAllMirrorItems = () => {
     updateMirrorWidgetRect(widget.id, {
       x: widget.x,
       y: widget.y,
-      width: CLOCK_WIDGET_APPROX_WIDTH,
-      height: CLOCK_WIDGET_APPROX_HEIGHT,
+      width: widget.type === 'package' ? widget.width : CLOCK_WIDGET_APPROX_WIDTH,
+      height: widget.type === 'package' ? widget.height : CLOCK_WIDGET_APPROX_HEIGHT,
     });
   });
 };
@@ -2431,6 +2878,8 @@ const handleRestartToApply = () => {
 
 onMounted(() => {
   window.addEventListener('resize', handleWindowResize);
+  window.addEventListener('dragover', suppressWindowDrop);
+  window.addEventListener('drop', suppressWindowDrop);
   handleSystemThemeChange();
   if (prefersDarkMediaQuery) {
     if (typeof prefersDarkMediaQuery.addEventListener === 'function') {
@@ -2445,6 +2894,7 @@ onMounted(() => {
       updateCheckStatus.value = 'available';
     });
   }
+  void loadInstalledWidgets();
   void loadConfig().then(async () => {
     const status = await chappyApi?.getUpdateStatus?.();
     if (status?.isReady) {
@@ -2456,6 +2906,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleWindowResize);
+  window.removeEventListener('dragover', suppressWindowDrop);
+  window.removeEventListener('drop', suppressWindowDrop);
   if (mirrorResizeTimeout) {
     clearTimeout(mirrorResizeTimeout);
     mirrorResizeTimeout = null;

@@ -4,14 +4,21 @@ import { ref } from 'vue';
  * Shared pointer-drag logic for mirror windows and widgets.
  * Geometry stays local while a gesture is in flight and is committed once on
  * pointerup, so config persistence is not hammered on every pointermove.
+ * minWidth/minHeight may be numbers or getters; getters are resolved when a
+ * gesture begins, so limits that load asynchronously (widget manifests) apply
+ * without remounting the component.
  */
 export function useMirrorDrag({ getRect, getBounds, minWidth, minHeight, onStart, onCommit }) {
   const liveRect = ref(null);
   const dragMode = ref(null); // 'move' | 'resize' | null
 
+  const resolveLimit = (limit) => (typeof limit === 'function' ? limit() : limit);
+
   let startPointer = null;
   let startRect = null;
   let bounds = null;
+  let activeMinWidth = resolveLimit(minWidth);
+  let activeMinHeight = resolveLimit(minHeight);
 
   // Resizing must cap size while keeping the origin fixed; moving must clamp
   // the origin while keeping the size fixed — mixing the two makes a resize
@@ -21,8 +28,14 @@ export function useMirrorDrag({ getRect, getBounds, minWidth, minHeight, onStart
       return { ...rect };
     }
     if (mode === 'resize') {
-      const width = Math.min(Math.max(rect.width, minWidth), Math.max(minWidth, bounds.width - rect.x));
-      const height = Math.min(Math.max(rect.height, minHeight), Math.max(minHeight, bounds.height - rect.y));
+      const width = Math.min(
+        Math.max(rect.width, activeMinWidth),
+        Math.max(activeMinWidth, bounds.width - rect.x)
+      );
+      const height = Math.min(
+        Math.max(rect.height, activeMinHeight),
+        Math.max(activeMinHeight, bounds.height - rect.y)
+      );
       return { x: rect.x, y: rect.y, width, height };
     }
     const maxX = Math.max(0, bounds.width - rect.width);
@@ -77,6 +90,8 @@ export function useMirrorDrag({ getRect, getBounds, minWidth, minHeight, onStart
     startPointer = { x: event.clientX, y: event.clientY };
     startRect = { ...getRect() };
     bounds = getBounds?.() || null;
+    activeMinWidth = resolveLimit(minWidth);
+    activeMinHeight = resolveLimit(minHeight);
     window.addEventListener('pointermove', handleMove);
     window.addEventListener('pointerup', handleUp);
     window.addEventListener('pointercancel', handleUp);
