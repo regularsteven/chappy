@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Calendar</title>
+<style>
+  :root {
+    /* Bright accents behind mirror glass, matching the Weather widget. */
+    --text: #e2e8f0;
+    --text-soft: #cbd5e1;
+    --text-muted: #94a3b8;
+    --kicker: #7dd3fc;
+    --tomorrow: #c4b5fd;
+    --distant: #7dd3fc;
+    --approaching: #fbbf24;
+    --now-bg: #ef4444;
+    --now-fg: #fff7ed;
+    --time: #7dd3fc;
+    --line: rgba(148, 163, 184, 0.35);
+    --field-bg: #0b1220;
+    --field-border: rgba(100, 116, 139, 0.8);
+    --accent: #38bdf8;
+    --ok: #34d399;
+    --err: #fb7185;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  /* Class display rules (flex/grid) and inline styles outrank the UA [hidden]
+     rule — make the attribute unconditional so .hidden = true always works. */
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  /* Everything is in rem so resizing the widget frame scales the layout. */
+  html { font-size: clamp(9px, 4vmin, 26px); }
+  body {
+    background: #000000;
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .pane { display: none; height: 100%; padding: 1.1rem 1.3rem 1rem; flex-direction: column; }
+  .pane.active { display: flex; }
+
+  .top-row { display: flex; align-items: baseline; gap: 0.6rem; }
+  .kicker {
+    font-size: 0.8rem; font-weight: 700; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--kicker); white-space: nowrap;
+  }
+  .chip {
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--tomorrow); border: 1px solid currentColor; border-radius: 999px;
+    padding: 0.05rem 0.55rem; white-space: nowrap;
+  }
+  .updated { margin-left: auto; font-size: 0.65rem; letter-spacing: 0.1em; color: var(--text-muted); white-space: nowrap; }
+  .gear {
+    background: none; border: none; color: var(--text-muted); font-size: 1.05rem;
+    cursor: pointer; padding: 0.1rem 0.3rem; border-radius: 0.4rem; line-height: 1;
+    opacity: 0; transition: opacity 140ms ease, color 140ms ease;
+  }
+  .top-row .gear { margin-left: 0; }
+  .updated:not([hidden]) + .gear { margin-left: 0; }
+  body:hover .gear { opacity: 1; }
+  .gear:hover { color: var(--text); }
+
+  /* The departure band shown in Today / Week views. */
+  .leave-band {
+    margin-top: 0.7rem; display: flex; align-items: baseline; gap: 0.5rem;
+    font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden;
+  }
+  .leave-band .leave-text {
+    font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; font-size: 1.05rem;
+  }
+  .leave-band .leave-event { font-size: 0.85rem; color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; }
+  .leave-band.distant .leave-text { color: var(--distant); font-weight: 500; }
+  .leave-band.approaching .leave-text { color: var(--approaching); }
+  .leave-band.now .leave-text {
+    color: var(--now-fg); background: var(--now-bg);
+    padding: 0.12rem 0.55rem; border-radius: 0.45rem;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.55; }
+  }
+
+  /* Agenda lists (Today and Week views). */
+  .list { margin-top: 0.55rem; overflow: hidden; flex: 1; min-height: 0; }
+  .day-label {
+    font-size: 0.7rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--text-muted); margin: 0.65rem 0 0.15rem;
+  }
+  .day-label:first-child { margin-top: 0; }
+  .row {
+    display: flex; align-items: baseline; gap: 0.7rem; padding: 0.22rem 0;
+    font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden;
+  }
+  .row .time { color: var(--time); font-weight: 600; font-size: 0.9rem; min-width: 3.2rem; }
+  .row .name { color: var(--text); font-size: 1rem; overflow: hidden; text-overflow: ellipsis; }
+  .row.all-day .time { color: var(--text-muted); font-weight: 500; font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .empty { margin: auto; text-align: center; font-size: 0.95rem; color: var(--text-muted); letter-spacing: 0.06em; }
+  .empty .sub { margin-top: 0.4rem; font-size: 0.8rem; }
+  .empty .sub .time { color: var(--time); font-weight: 600; }
+
+  /* Up next (hero) view. */
+  .hero-title {
+    margin-top: 0.55rem; font-size: 1.7rem; font-weight: 300; line-height: 1.15;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  }
+  .hero-meta {
+    margin-top: 0.35rem; font-size: 0.9rem; color: var(--text-soft);
+    font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .hero-meta .at { color: var(--text); font-weight: 600; }
+  .hero-meta .note { color: var(--text-muted); }
+  .hero-leave {
+    margin-top: auto; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    font-variant-numeric: tabular-nums; font-size: 1.5rem; line-height: 1.2; align-self: flex-start;
+  }
+  .hero-leave.distant { color: var(--distant); font-weight: 400; }
+  .hero-leave.approaching { color: var(--approaching); }
+  .hero-leave.now {
+    color: var(--now-fg); background: var(--now-bg);
+    padding: 0.2rem 0.7rem; border-radius: 0.5rem;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  .hero-travel { margin-top: 0.3rem; font-size: 0.85rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .hero-strip {
+    margin-top: 0.8rem; padding-top: 0.6rem; border-top: 1px solid var(--line);
+    font-size: 0.8rem; color: var(--text-muted); font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .hero-strip .time { color: var(--text-soft); font-weight: 600; }
+
+  /* Status pane (connect / errors). */
+  .status { margin: auto; text-align: center; font-size: 0.95rem; color: var(--text-muted); letter-spacing: 0.04em; }
+  .status .headline { color: var(--text-soft); font-size: 1.05rem; }
+  .status .fine { margin-top: 0.55rem; font-size: 0.75rem; line-height: 1.5; overflow-wrap: anywhere; }
+  .status button, .settings-footer button, .seg button {
+    background: none; border: 1px solid var(--field-border); color: var(--text-soft);
+    font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 0.4rem 0.9rem; border-radius: 999px; cursor: pointer;
+  }
+  .status button { display: block; margin: 0.9rem auto 0; }
+  .status button:hover, .settings-footer button:hover { color: var(--text); border-color: var(--accent); }
+
+  /* Settings pane. */
+  .settings-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  .settings-scroll::-webkit-scrollbar { display: none; }
+  .settings-title { font-size: 0.85rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--kicker); }
+  .field { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.3rem; }
+  .field label { font-size: 0.65rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-muted); }
+  .field .hint { font-size: 0.65rem; color: var(--text-muted); line-height: 1.45; }
+  input[type="text"], textarea {
+    width: 100%; background: var(--field-bg); border: 1px solid var(--field-border);
+    color: var(--text); font-size: 0.85rem; padding: 0.4rem 0.55rem; border-radius: 0.55rem;
+    outline: none; font-family: inherit;
+  }
+  textarea { resize: none; height: 3.4rem; }
+  input:focus, textarea:focus { border-color: var(--accent); }
+  .seg { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .seg button { flex: 1; padding: 0.35rem 0.3rem; border-radius: 0.55rem; white-space: nowrap; }
+  .seg button.active { color: #0b1220; background: var(--accent); border-color: var(--accent); }
+  .seg button:not(.active):hover { color: var(--text); }
+  .save-result { font-size: 0.7rem; line-height: 1.4; min-height: 1rem; overflow-wrap: anywhere; }
+  .save-result.ok { color: var(--ok); }
+  .save-result.err { color: var(--err); }
+  .settings-footer { margin-top: 0.7rem; display: flex; justify-content: space-between; gap: 0.5rem; }
+</style>
+</head>
+<body>
+  <section id="main-pane" class="pane">
+    <div class="top-row">
+      <p class="kicker" id="kicker">Today</p>
+      <p class="chip" id="tomorrow-chip" hidden>Tomorrow</p>
+      <p class="updated" id="updated" hidden></p>
+      <button type="button" class="gear" id="open-settings" title="Widget settings">⚙</button>
+    </div>
+    <div class="leave-band" id="leave-band" hidden>
+      <span class="leave-text" id="leave-band-text"></span>
+      <span class="leave-event" id="leave-band-event"></span>
+    </div>
+
+    <div class="list" id="list-body" hidden></div>
+
+    <p class="hero-title" id="hero-title" hidden></p>
+    <p class="hero-meta" id="hero-meta" hidden></p>
+    <p class="hero-leave" id="hero-leave" hidden></p>
+    <p class="hero-travel" id="hero-travel" hidden></p>
+    <p class="hero-strip" id="hero-strip" hidden></p>
+  </section>
+
+  <section id="status-pane" class="pane">
+    <div class="status">
+      <p class="headline" id="status-headline">Connecting…</p>
+      <p class="fine" id="status-fine" hidden></p>
+      <button type="button" id="connect" hidden>Connect Google Calendar</button>
+    </div>
+  </section>
+
+  <section id="settings-pane" class="pane">
+    <div class="settings-scroll">
+      <p class="settings-title">Calendar settings</p>
+      <div class="field">
+        <label id="view-label">View</label>
+        <div class="seg" id="view-seg" role="group" aria-labelledby="view-label">
+          <button type="button" data-view="today">Today</button>
+          <button type="button" data-view="week">Week</button>
+          <button type="button" data-view="next">Up next</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="ics-input">Calendar links (one per line)</label>
+        <textarea id="ics-input" spellcheck="false" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"></textarea>
+        <p class="hint">Google Calendar: Settings → your calendar → Integrate calendar → <b>Secret address in iCal format</b>. Apple and Outlook publish similar private links.</p>
+      </div>
+      <div class="field">
+        <label for="home-input">Home address</label>
+        <input id="home-input" type="text" autocomplete="off" placeholder="Vinohradská 123, Praha 2" />
+      </div>
+      <div class="field">
+        <label id="mode-label">Travel mode</label>
+        <div class="seg" id="mode-seg" role="group" aria-labelledby="mode-label">
+          <button type="button" data-mode="driving">🚗</button>
+          <button type="button" data-mode="transit">🚈</button>
+          <button type="button" data-mode="walking">🚶</button>
+          <button type="button" data-mode="bicycling">🚴</button>
+        </div>
+        <p class="hint" id="transit-hint" hidden>Transit estimates need a Google Maps key in ~/.chappy/calendar.json — other modes work without one.</p>
+      </div>
+      <div class="field" id="google-field" hidden>
+        <label>Google Calendar API</label>
+        <p class="hint" id="google-status"></p>
+        <div class="seg"><button type="button" id="google-connect" hidden>Connect</button></div>
+      </div>
+      <p class="save-result" id="save-result"></p>
+    </div>
+    <div class="settings-footer">
+      <button type="button" id="cancel-settings">Done</button>
+      <button type="button" id="save-settings">Save</button>
+    </div>
+  </section>
+
+<script>
+(function () {
+  'use strict';
+
+  var API = 'chappy-widget://api';
+  var POLL_MS = 60 * 1000;
+  var AUTH_POLL_MS = 5 * 1000;
+  var APPROACHING_MS = 60 * 60 * 1000;
+  var NOW_MS = 5 * 60 * 1000;
+  var VIEWS = ['today', 'week', 'next'];
+  var MODE_GLYPHS = { driving: '🚗', walking: '🚶', transit: '🚈', bicycling: '🚴' };
+
+  var params = new URLSearchParams(location.search);
+  var instanceId = params.get('instance') || 'default';
+  var STORE_KEY = 'chappy-calendar:' + instanceId;
+
+  var mainPane = document.getElementById('main-pane');
+  var statusPane = document.getElementById('status-pane');
+  var settingsPane = document.getElementById('settings-pane');
+  var kickerEl = document.getElementById('kicker');
+  var tomorrowChip = document.getElementById('tomorrow-chip');
+  var updatedEl = document.getElementById('updated');
+  var leaveBand = document.getElementById('leave-band');
+  var leaveBandText = document.getElementById('leave-band-text');
+  var leaveBandEvent = document.getElementById('leave-band-event');
+  var listBody = document.getElementById('list-body');
+  var heroTitle = document.getElementById('hero-title');
+  var heroMeta = document.getElementById('hero-meta');
+  var heroLeave = document.getElementById('hero-leave');
+  var heroTravel = document.getElementById('hero-travel');
+  var heroStrip = document.getElementById('hero-strip');
+  var statusHeadline = document.getElementById('status-headline');
+  var statusFine = document.getElementById('status-fine');
+  var connectButton = document.getElementById('connect');
+  var icsInput = document.getElementById('ics-input');
+  var homeInput = document.getElementById('home-input');
+  var transitHint = document.getElementById('transit-hint');
+  var googleField = document.getElementById('google-field');
+  var googleStatus = document.getElementById('google-status');
+  var googleConnect = document.getElementById('google-connect');
+  var saveResult = document.getElementById('save-result');
+  var viewButtons = Array.prototype.slice.call(document.querySelectorAll('#view-seg button'));
+  var modeButtons = Array.prototype.slice.call(document.querySelectorAll('#mode-seg button'));
+
+  var payload = null;
+  var cfg = null;
+  var pollTimer = null;
+  var authClicked = false;
+  var autoOpenedSettings = false;
+  var pendingMode = 'driving';
+  var timeFormatter = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
+  var dayFormatter = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+
+  function loadView() {
+    try {
+      var parsed = JSON.parse(localStorage.getItem(STORE_KEY) || '{}');
+      return VIEWS.indexOf(parsed.view) === -1 ? 'today' : parsed.view;
+    } catch (error) {
+      return 'today';
+    }
+  }
+  var view = loadView();
+  function saveView(next) {
+    view = next;
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({ view: next })); } catch (error) {}
+  }
+
+  function formatTime(iso) {
+    return timeFormatter.format(new Date(iso));
+  }
+
+  function localDayKey(date) {
+    return date.getFullYear() * 10000 + (date.getMonth() + 1) * 100 + date.getDate();
+  }
+
+  function dayLabelFor(iso) {
+    var date = new Date(iso);
+    var now = new Date();
+    var key = localDayKey(date);
+    if (key === localDayKey(now)) return 'Today';
+    if (key === localDayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))) return 'Tomorrow';
+    return dayFormatter.format(date);
+  }
+
+  function showPane(pane) {
+    mainPane.classList.toggle('active', pane === 'main');
+    statusPane.classList.toggle('active', pane === 'status');
+    settingsPane.classList.toggle('active', pane === 'settings');
+  }
+
+  function showStatus(headline, fine, withConnect) {
+    showPane('status');
+    statusHeadline.textContent = headline;
+    statusFine.hidden = !fine;
+    statusFine.textContent = fine || '';
+    connectButton.hidden = !withConnect;
+  }
+
+  function leaveState(leaveByUtc) {
+    var remaining = new Date(leaveByUtc).getTime() - Date.now();
+    if (remaining <= NOW_MS) {
+      return {
+        cls: 'now',
+        text: remaining <= 0 ? 'Leave now' : 'Leave in ' + Math.max(1, Math.ceil(remaining / 60000)) + ' min'
+      };
+    }
+    if (remaining <= APPROACHING_MS) {
+      return { cls: 'approaching', text: 'Leave in ' + Math.ceil(remaining / 60000) + ' min' };
+    }
+    return { cls: 'distant', text: 'Leave by ' + formatTime(leaveByUtc) };
+  }
+
+  /* The departure line has to be readable from across the room. Recomputed
+     every second from leaveByUtc — no network in the countdown itself. */
+  function renderLeaveLines() {
+    var active = payload && payload.active;
+    var hasLeave = Boolean(active && active.leaveByUtc);
+    if (view === 'next') {
+      leaveBand.hidden = true;
+      heroLeave.hidden = !hasLeave;
+      if (hasLeave) {
+        var hero = leaveState(active.leaveByUtc);
+        heroLeave.className = 'hero-leave ' + hero.cls;
+        heroLeave.textContent = hero.text;
+      }
+      return;
+    }
+    heroLeave.hidden = true;
+    leaveBand.hidden = !hasLeave;
+    if (hasLeave) {
+      var band = leaveState(active.leaveByUtc);
+      leaveBand.className = 'leave-band ' + band.cls;
+      leaveBandText.textContent = band.text;
+      leaveBandEvent.textContent =
+        (active.isTomorrow ? 'tomorrow · ' : '') + formatTime(active.startUtc) + ' ' + active.title;
+    }
+  }
+
+  function eventRow(item) {
+    /* All strings from the API become text nodes — never markup. */
+    var row = document.createElement('p');
+    row.className = 'row' + (item.allDay ? ' all-day' : '');
+    var time = document.createElement('span');
+    time.className = 'time';
+    time.textContent = item.allDay ? 'All day' : formatTime(item.startUtc);
+    var name = document.createElement('span');
+    name.className = 'name';
+    name.textContent = item.title;
+    row.appendChild(time);
+    row.appendChild(name);
+    return row;
+  }
+
+  function renderEmpty(container, headline, active) {
+    var empty = document.createElement('div');
+    empty.className = 'empty';
+    var main = document.createElement('p');
+    main.textContent = headline;
+    empty.appendChild(main);
+    if (active && active.isTomorrow) {
+      var sub = document.createElement('p');
+      sub.className = 'sub';
+      var time = document.createElement('span');
+      time.className = 'time';
+      time.textContent = 'Tomorrow ' + formatTime(active.startUtc);
+      sub.appendChild(time);
+      sub.appendChild(document.createTextNode(' ' + active.title));
+      empty.appendChild(sub);
+    }
+    container.appendChild(empty);
+  }
+
+  function renderTodayView() {
+    listBody.hidden = false;
+    listBody.style.display = 'flex';
+    listBody.style.flexDirection = 'column';
+    listBody.textContent = '';
+    var items = payload.today || [];
+    if (!items.length) {
+      renderEmpty(listBody, 'Nothing else today', payload.active);
+      return;
+    }
+    items.forEach(function (item) { listBody.appendChild(eventRow(item)); });
+  }
+
+  function renderWeekView() {
+    listBody.hidden = false;
+    listBody.style.display = 'block';
+    listBody.textContent = '';
+    var groups = payload.week || [];
+    if (!groups.length) {
+      listBody.style.display = 'flex';
+      listBody.style.flexDirection = 'column';
+      renderEmpty(listBody, 'Nothing this week', null);
+      return;
+    }
+    groups.forEach(function (group) {
+      var label = document.createElement('p');
+      label.className = 'day-label';
+      label.textContent = dayLabelFor(group.dateUtc);
+      listBody.appendChild(label);
+      group.events.forEach(function (item) { listBody.appendChild(eventRow(item)); });
+    });
+  }
+
+  function renderNextView() {
+    var active = payload.active;
+    if (!active) {
+      listBody.hidden = false;
+      listBody.style.display = 'flex';
+      listBody.style.flexDirection = 'column';
+      listBody.textContent = '';
+      renderEmpty(listBody, 'No upcoming events', null);
+      return;
+    }
+    heroTitle.hidden = false;
+    heroTitle.textContent = active.title;
+
+    heroMeta.hidden = false;
+    heroMeta.textContent = '';
+    var at = document.createElement('span');
+    at.className = 'at';
+    at.textContent = formatTime(active.startUtc);
+    heroMeta.appendChild(at);
+    if (active.location) {
+      heroMeta.appendChild(document.createTextNode('  ·  ' + active.location));
+    }
+    if (active.travelUnavailable) {
+      var note = document.createElement('span');
+      note.className = 'note';
+      note.textContent = '  ·  travel unavailable';
+      heroMeta.appendChild(note);
+    }
+
+    if (active.travel) {
+      heroTravel.hidden = false;
+      heroTravel.textContent =
+        (MODE_GLYPHS[active.travel.mode] || '🚗') + ' ' +
+        active.travel.durationMinutes + ' min · ' +
+        active.travel.distanceKm + ' km';
+    }
+
+    var strip = (payload.today || []).filter(function (item) {
+      return item.startUtc !== active.startUtc || item.title !== active.title;
+    });
+    if (strip.length) {
+      heroStrip.hidden = false;
+      heroStrip.textContent = '';
+      strip.slice(0, 4).forEach(function (item, index) {
+        if (index > 0) heroStrip.appendChild(document.createTextNode('  ·  '));
+        var time = document.createElement('span');
+        time.className = 'time';
+        time.textContent = item.allDay ? 'All day' : formatTime(item.startUtc);
+        heroStrip.appendChild(time);
+        heroStrip.appendChild(document.createTextNode(' ' + item.title));
+      });
+    }
+  }
+
+  function render() {
+    if (!payload) {
+      return;
+    }
+    if (payload.status === 'not-configured') {
+      if (!autoOpenedSettings) {
+        autoOpenedSettings = true;
+        openSettings();
+      } else if (!settingsPane.classList.contains('active')) {
+        showStatus('No calendar yet', 'Hover and hit ⚙ to add a calendar link.', false);
+      }
+      return;
+    }
+    if (payload.status === 'needs-auth') {
+      if (settingsPane.classList.contains('active')) return;
+      if (authClicked && payload.authPending) {
+        showStatus('Approve access in your browser…', 'A Google sign-in tab was opened on this machine.', false);
+      } else {
+        authClicked = false;
+        showStatus('Google Calendar', 'Read-only access, revocable anytime from your Google account.', true);
+      }
+      return;
+    }
+    if (payload.status === 'error') {
+      if (settingsPane.classList.contains('active')) return;
+      showStatus('Calendar unavailable', 'Chappy will keep retrying quietly.', false);
+      return;
+    }
+    if (settingsPane.classList.contains('active')) {
+      return;
+    }
+
+    showPane('main');
+    kickerEl.textContent = view === 'today' ? 'Today' : view === 'week' ? 'This week' : 'Up next';
+    tomorrowChip.hidden = !(view === 'next' && payload.active && payload.active.isTomorrow);
+    updatedEl.hidden = !payload.stale || !payload.lastUpdatedUtc;
+    if (!updatedEl.hidden) {
+      updatedEl.textContent = 'updated ' + formatTime(payload.lastUpdatedUtc);
+    }
+
+    listBody.hidden = true;
+    heroTitle.hidden = true;
+    heroMeta.hidden = true;
+    heroTravel.hidden = true;
+    heroStrip.hidden = true;
+
+    if (view === 'today') renderTodayView();
+    else if (view === 'week') renderWeekView();
+    else renderNextView();
+    renderLeaveLines();
+  }
+
+  function schedulePoll() {
+    if (pollTimer) clearTimeout(pollTimer);
+    var wait = payload && payload.status === 'needs-auth' && authClicked ? AUTH_POLL_MS : POLL_MS;
+    pollTimer = setTimeout(poll, wait);
+  }
+
+  function poll() {
+    fetch(API + '/calendar')
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .then(function (data) {
+        payload = data;
+        render();
+      })
+      .catch(function () {
+        /* Keep showing the last data; only fall to a status screen when the
+           widget has never rendered anything (a blank mirror looks broken). */
+        if (!payload) showStatus('Calendar unavailable', 'Chappy will keep retrying quietly.', false);
+      })
+      .then(schedulePoll);
+  }
+
+  function startAuth(onFail) {
+    authClicked = true;
+    fetch(API + '/auth/start', { method: 'POST' })
+      .then(function (response) { return response.json(); })
+      .then(function (result) {
+        if (!result.ok) {
+          authClicked = false;
+          onFail(result.error || 'Couldn’t start sign-in.');
+        }
+      })
+      .catch(function () {
+        authClicked = false;
+        onFail('Couldn’t start sign-in.');
+      });
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = setTimeout(poll, AUTH_POLL_MS);
+  }
+
+  /* ---- settings ---- */
+
+  function syncViewButtons() {
+    viewButtons.forEach(function (button) {
+      button.classList.toggle('active', button.dataset.view === view);
+    });
+  }
+
+  function syncModeButtons() {
+    modeButtons.forEach(function (button) {
+      button.classList.toggle('active', button.dataset.mode === pendingMode);
+    });
+  }
+
+  function setSaveResult(message, ok) {
+    saveResult.textContent = message || '';
+    saveResult.className = 'save-result' + (message ? (ok ? ' ok' : ' err') : '');
+  }
+
+  function openSettings() {
+    showPane('settings');
+    syncViewButtons();
+    setSaveResult('', true);
+    fetch(API + '/config')
+      .then(function (response) { return response.json(); })
+      .then(function (data) {
+        cfg = data;
+        icsInput.value = (cfg.icsUrls || []).join('\n');
+        homeInput.value = cfg.homeAddress || '';
+        pendingMode = cfg.travelMode || 'driving';
+        syncModeButtons();
+        transitHint.hidden = cfg.hasMapsKey || pendingMode !== 'transit';
+        googleField.hidden = !cfg.hasGoogleCreds;
+        if (cfg.hasGoogleCreds) {
+          googleStatus.textContent = cfg.googleConnected
+            ? 'Connected — events sync through the Google API too.'
+            : 'Credentials found, not connected yet.';
+          googleConnect.hidden = cfg.googleConnected;
+        }
+      })
+      .catch(function () {
+        setSaveResult('Couldn’t load current settings.', false);
+      });
+  }
+
+  function saveSettings() {
+    setSaveResult('Saving…', true);
+    var body = {
+      icsUrls: icsInput.value.split('\n').map(function (line) { return line.trim(); }).filter(Boolean),
+      homeAddress: homeInput.value.trim(),
+      travelMode: pendingMode
+    };
+    fetch(API + '/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+      .then(function (response) { return response.json(); })
+      .then(function (result) {
+        if (!result.ok) {
+          setSaveResult(result.error || 'Saving failed.', false);
+          return;
+        }
+        setSaveResult(result.home && result.home.label ? 'Home: ' + result.home.label : 'Saved.', true);
+        if (pollTimer) clearTimeout(pollTimer);
+        pollTimer = setTimeout(poll, 400);
+      })
+      .catch(function () {
+        setSaveResult('Saving failed — is Chappy still running?', false);
+      });
+  }
+
+  document.getElementById('open-settings').addEventListener('click', openSettings);
+  document.getElementById('cancel-settings').addEventListener('click', function () {
+    showPane('main');
+    if (payload) render();
+    poll();
+  });
+  document.getElementById('save-settings').addEventListener('click', saveSettings);
+  viewButtons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      saveView(button.dataset.view);
+      syncViewButtons();
+    });
+  });
+  modeButtons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      pendingMode = button.dataset.mode;
+      syncModeButtons();
+      transitHint.hidden = (cfg && cfg.hasMapsKey) || pendingMode !== 'transit';
+    });
+  });
+  connectButton.addEventListener('click', function () {
+    showStatus('Approve access in your browser…', 'A Google sign-in tab was opened on this machine.', false);
+    startAuth(function (message) { showStatus('Couldn’t start sign-in', message, true); });
+  });
+  googleConnect.addEventListener('click', function () {
+    googleStatus.textContent = 'Approve access in the browser tab that just opened…';
+    startAuth(function (message) { googleStatus.textContent = message; });
+  });
+
+  /* Countdown ticks locally; state colors shift without any API traffic. */
+  setInterval(renderLeaveLines, 1000);
+  showStatus('Connecting…', '', false);
+  poll();
+})();
+</script>
+</body>
+</html>

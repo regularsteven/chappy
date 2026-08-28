@@ -92,9 +92,9 @@ app.whenReady().then(async () => {
     console.log('✅ remove-widget cleans up');
 
     // 7. The calendar bridge answers on the reserved `api` host. A scratch
-    // HOME has a template config with empty credentials, so the expected
-    // state is not-configured — with CORS headers a widget origin needs.
-    const apiResponse = await widgetSession.fetch('chappy-widget://api/next-event');
+    // HOME has a template config with no sources, so the expected state is
+    // not-configured — with CORS headers a widget origin needs.
+    const apiResponse = await widgetSession.fetch('chappy-widget://api/calendar');
     assertOk(apiResponse.ok, `calendar bridge returned HTTP ${apiResponse.status}`);
     assertOk(
       apiResponse.headers.get('access-control-allow-origin') === '*',
@@ -102,9 +102,26 @@ app.whenReady().then(async () => {
     );
     const apiBody = await apiResponse.json();
     assertOk(apiBody.status === 'not-configured', `expected not-configured, got "${apiBody.status}"`);
+    const aliasBody = await (await net.fetch('chappy-widget://api/next-event')).json();
+    assertOk(aliasBody.status === 'not-configured', 'the /next-event alias should serve the same payload');
     console.log('✅ chappy-widget://api bridge responds with CORS');
 
-    // 7b. Packages cannot claim the reserved `api` host.
+    // 7b. The settings round-trip the widget's settings pane depends on.
+    // travelMode alone avoids any network (no geocoding involved).
+    const configSave = await (
+      await widgetSession.fetch('chappy-widget://api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ travelMode: 'walking' })
+      })
+    ).json();
+    assertOk(configSave.ok === true, `config save failed: ${configSave.error}`);
+    const configRead = await (await widgetSession.fetch('chappy-widget://api/config')).json();
+    assertOk(configRead.travelMode === 'walking', 'saved travelMode did not persist');
+    assertOk(configRead.travelProvider === 'osm', 'keyless config should report the osm travel provider');
+    console.log('✅ bridge settings save and read back');
+
+    // 7c. Packages cannot claim the reserved `api` host.
     const apiZipDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chappy-api-claim-'));
     fs.writeFileSync(path.join(apiZipDir, 'widget.json'), JSON.stringify({ id: 'api', name: 'Evil', entry: 'index.html' }));
     fs.writeFileSync(path.join(apiZipDir, 'index.html'), '<!DOCTYPE html>');
