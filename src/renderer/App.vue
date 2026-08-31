@@ -67,16 +67,17 @@
       </div>
       <button
         id="chappy-tab-button"
-        title="Chappy"
+        :title="chappyTabButtonLabel"
+        :aria-expanded="isMirrorMode ? String(isChappyViewVisible) : undefined"
         class="service-tab-button chappy-tab-button mt-2 flex shrink-0 items-center justify-center rounded-2xl border border-slate-800 transition focus-visible:outline-none"
         :class="{
-          'bg-slate-700 text-white shadow-[0_0_25px] shadow-sky-500/40 ring-2 ring-sky-400': activeTabId === 'chappy',
-          'bg-slate-900 text-slate-400 hover:bg-slate-800': activeTabId !== 'chappy'
+          'bg-slate-700 text-white shadow-[0_0_25px] shadow-sky-500/40 ring-2 ring-sky-400': isChappyViewVisible,
+          'bg-slate-900 text-slate-400 hover:bg-slate-800': !isChappyViewVisible
         }"
-        :style="activeTabId === 'chappy' ? { boxShadow: '0 0 18px rgba(56, 189, 248, 0.65)' } : {}"
-        @click="selectTab('chappy')"
+        :style="isChappyViewVisible ? { boxShadow: '0 0 18px rgba(56, 189, 248, 0.65)' } : {}"
+        @click="toggleChappyPanel"
       >
-        <span class="sr-only">Chappy</span>
+        <span class="sr-only">{{ chappyTabButtonLabel }}</span>
         <span class="chappy-tab-icon-shell flex items-center justify-center rounded-xl border border-white/30 bg-white">
           <img
             :src="chappyLogoUrl"
@@ -91,7 +92,7 @@
 
     <main id="chappy-main" class="main-content flex flex-1 flex-col">
       <header
-        v-if="activeTab.isChappy"
+        v-if="isChappyViewVisible"
         id="chappy-header"
         class="chappy-header flex items-center justify-between gap-4 border-b border-slate-800 bg-slate-950 px-6 py-4"
       >
@@ -105,42 +106,69 @@
             <h1 class="text-2xl font-semibold text-white">Chappy</h1>
           </div>
         </div>
-        <fieldset
-          id="chappy-theme-toggle"
-          class="theme-toggle inline-flex flex-wrap items-center gap-1 rounded-full border border-slate-700 bg-slate-900/80 p-1"
-          aria-label="Theme preference"
-        >
-          <legend class="sr-only">Theme preference</legend>
-          <label
-            v-for="option in themePreferenceOptions"
-            :key="option.value"
-            class="theme-toggle-option cursor-pointer"
-            :for="`chappy-theme-${option.value}`"
+        <div class="flex items-center gap-3">
+          <fieldset
+            id="chappy-theme-toggle"
+            class="theme-toggle inline-flex flex-wrap items-center gap-1 rounded-full border border-slate-700 bg-slate-900/80 p-1"
+            aria-label="Theme preference"
           >
-            <input
-              :id="`chappy-theme-${option.value}`"
-              v-model="themePreference"
-              type="radio"
-              name="chappy-theme"
-              :value="option.value"
-              class="peer sr-only"
-            />
-            <span
-              class="block rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition"
-              :class="
-                themePreference === option.value
-                  ? 'bg-slate-700 text-white shadow-sm'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              "
+            <legend class="sr-only">Theme preference</legend>
+            <label
+              v-for="option in themePreferenceOptions"
+              :key="option.value"
+              class="theme-toggle-option cursor-pointer"
+              :for="`chappy-theme-${option.value}`"
             >
-              {{ option.label }}
-            </span>
-          </label>
-        </fieldset>
+              <input
+                :id="`chappy-theme-${option.value}`"
+                v-model="themePreference"
+                type="radio"
+                name="chappy-theme"
+                :value="option.value"
+                class="peer sr-only"
+              />
+              <span
+                class="block rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition"
+                :class="
+                  themePreference === option.value
+                    ? 'bg-slate-700 text-white shadow-sm'
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                "
+              >
+                {{ option.label }}
+              </span>
+            </label>
+          </fieldset>
+          <button
+            v-if="isMirrorMode"
+            id="chappy-hide-button"
+            type="button"
+            title="Hide Chappy and show the mirror"
+            class="hide-chappy-button inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/80 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-300 transition hover:bg-slate-800 hover:text-white"
+            @click="hideChappyPanel"
+          >
+            <svg
+              aria-hidden="true"
+              class="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M3 3l18 18" />
+              <path d="M10.6 5.1A9.8 9.8 0 0 1 12 5c5 0 9 4.5 9 7a12 12 0 0 1-2.3 3.2" />
+              <path d="M6.6 6.7C4.2 8.2 3 10.4 3 12c0 2.5 4 7 9 7a9.7 9.7 0 0 0 4.3-1" />
+              <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+            </svg>
+            Hide
+          </button>
+        </div>
       </header>
 
       <section id="workspace-content" class="workspace-content relative flex flex-1 flex-col overflow-hidden">
-        <div v-show="activeTab.isChappy" id="chappy-tab-view" class="chappy-tab-view flex-1 overflow-y-auto p-6">
+        <div v-show="isChappyViewVisible" id="chappy-tab-view" class="chappy-tab-view flex-1 overflow-y-auto p-6">
           <div id="chappy-subtab-menu" class="mb-6 inline-flex rounded-2xl border border-slate-800 bg-slate-900/70 p-1">
             <button
               id="chappy-subtab-your-chappy"
@@ -689,11 +717,12 @@
                   >
                     <input
                       :id="`display-mode-${option.value}`"
-                      v-model="displayMode"
                       type="radio"
                       name="display-mode"
                       :value="option.value"
+                      :checked="displayMode === option.value"
                       class="peer sr-only"
+                      @change="setDisplayMode(option.value)"
                     />
                     <span
                       class="block rounded-full px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition"
@@ -941,7 +970,7 @@
           </div>
         </div>
 
-        <div v-if="!isMirrorMode" v-show="!activeTab.isChappy" id="service-webview-panel" class="relative flex-1 overflow-hidden">
+        <div v-if="!isMirrorMode" v-show="!isChappyViewVisible" id="service-webview-panel" class="relative flex-1 overflow-hidden">
           <template v-if="preserveTabMemory">
             <webview
               v-for="tab in renderedPreservedTabs"
@@ -988,7 +1017,7 @@
 
         <div
           v-else
-          v-show="!activeTab.isChappy"
+          v-show="!isChappyViewVisible"
           id="mirror-canvas"
           ref="mirrorCanvasRef"
           class="mirror-canvas relative flex-1 overflow-hidden"
@@ -1190,6 +1219,11 @@ const displayModeValues = new Set(displayModeOptions.map((option) => option.valu
 const normalizeDisplayMode = (value) => (displayModeValues.has(value) ? value : 'desktop');
 const displayMode = ref('desktop');
 const isMirrorMode = computed(() => displayMode.value === 'mirror');
+// Mirror mode separates "the Chappy panel is showing" from "which mirror window
+// has focus". Desktop mode has only one full-bleed pane so activeTabId can carry
+// both; on the mirror the panel is an overlay over a canvas that keeps running,
+// and hiding it must reveal that canvas without opening or focusing a service.
+const isChappyPanelOpen = ref(true);
 const mirrorWidgets = ref([]);
 const installedWidgets = ref([]);
 const widgetInstallStatus = ref('');
@@ -1675,6 +1709,7 @@ const persistConfig = async () => {
       activeTabId: activeTabId.value,
       themePreference: themePreference.value,
       displayMode: displayMode.value,
+      chappyPanelOpen: isChappyPanelOpen.value,
       useSystemBrowserLinks: useSystemBrowserLinks.value,
       preserveTabMemory: preserveTabMemory.value,
       openServicesOnLaunch: openServicesOnLaunch.value,
@@ -1697,6 +1732,7 @@ const loadConfig = async () => {
     const persisted = await chappyApi.loadConfig();
     themePreference.value = normalizeThemePreference(persisted?.themePreference);
     displayMode.value = normalizeDisplayMode(persisted?.displayMode);
+    isChappyPanelOpen.value = persisted?.chappyPanelOpen !== false;
     mirrorWidgets.value = (Array.isArray(persisted?.mirrorWidgets) ? persisted.mirrorWidgets : [])
       .map(hydrateMirrorWidget)
       .filter(Boolean);
@@ -1747,6 +1783,18 @@ const activeTab = computed(() => {
     title: 'Chappy',
     isChappy: true,
   };
+});
+
+// Single source of truth for "is the Chappy panel on screen". Both workspace
+// panes and the sidebar button read this, so they can never disagree.
+const isChappyViewVisible = computed(() =>
+  isMirrorMode.value ? isChappyPanelOpen.value : activeTab.value.isChappy
+);
+const chappyTabButtonLabel = computed(() => {
+  if (!isMirrorMode.value) {
+    return 'Chappy';
+  }
+  return isChappyViewVisible.value ? 'Hide Chappy' : 'Show Chappy';
 });
 
 const resolveLaunchUrl = (tab) => {
@@ -2119,8 +2167,23 @@ const handleWidgetFileInput = (event) => {
   }
 };
 
+// Every display-mode change comes through here: the switch that triggers it
+// lives inside the Chappy panel, so the panel must survive the switch. The two
+// modes express "the panel is showing" differently — Mirror uses the panel flag,
+// Desktop uses activeTabId — so both are reset, or the user is dumped into
+// whichever service happened to be focused on the mirror.
+const setDisplayMode = (value) => {
+  const next = normalizeDisplayMode(value);
+  if (displayMode.value === next) {
+    return;
+  }
+  displayMode.value = next;
+  isChappyPanelOpen.value = true;
+  activeTabId.value = 'chappy';
+};
+
 const enableMirrorMode = () => {
-  displayMode.value = 'mirror';
+  setDisplayMode('mirror');
 };
 
 const goToWidgetsTab = () => {
@@ -2473,10 +2536,16 @@ const forceTabToLaunchUrl = (tabId) => {
 };
 
 const selectTab = (id) => {
-  if (isMirrorMode.value && id !== 'chappy') {
+  if (isMirrorMode.value) {
+    if (id === 'chappy') {
+      isChappyPanelOpen.value = true;
+      return;
+    }
     // Mirror mode: services live in floating windows, so a sidebar click opens
-    // (or re-focuses) the window instead of swapping a full-bleed view.
+    // (or re-focuses) the window instead of swapping a full-bleed view, and
+    // reveals the canvas the window lives on.
     captureActiveWebviewUrl();
+    isChappyPanelOpen.value = false;
     openMirrorWindowForTab(id);
     activeTabId.value = id;
     syncUnreadStateFromWebviewTitle(id);
@@ -2494,6 +2563,28 @@ const selectTab = (id) => {
   if (id !== 'chappy') {
     syncUnreadStateFromWebviewTitle(id);
   }
+};
+
+// Mirror only: the panel floats over a live canvas, so it can be dismissed
+// without picking a service. Desktop has nothing to fall back to, so the Chappy
+// button there keeps its plain select-the-tab behaviour.
+const hideChappyPanel = () => {
+  if (!isMirrorMode.value) {
+    return;
+  }
+  isChappyPanelOpen.value = false;
+};
+
+const toggleChappyPanel = () => {
+  if (!isMirrorMode.value) {
+    selectTab('chappy');
+    return;
+  }
+  if (isChappyPanelOpen.value) {
+    hideChappyPanel();
+    return;
+  }
+  isChappyPanelOpen.value = true;
 };
 
 const setChappyWorkspaceTab = (value) => {
@@ -2810,7 +2901,7 @@ const lastUpdateAppliedLabel = computed(() => {
   }
 });
 
-watch([tabs, activeTabId, themePreference, displayMode, mirrorWidgets, useSystemBrowserLinks, preserveTabMemory, openServicesOnLaunch, enableAutoUpdate], () => {
+watch([tabs, activeTabId, themePreference, displayMode, isChappyPanelOpen, mirrorWidgets, useSystemBrowserLinks, preserveTabMemory, openServicesOnLaunch, enableAutoUpdate], () => {
   void persistConfig();
 }, { deep: true });
 
