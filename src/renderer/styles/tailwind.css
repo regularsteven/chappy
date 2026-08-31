@@ -130,6 +130,19 @@
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.24);
 }
 
+/* Mirror mode only: dismisses the Chappy panel and hands the workspace back to
+   the mirror canvas. Themed from the same tokens as the theme toggle beside it. */
+#chappy-hide-button {
+  background-color: var(--ch-panel-bg-soft);
+  border-color: var(--ch-border-soft);
+  color: var(--ch-text-secondary);
+}
+
+#chappy-hide-button:hover {
+  background-color: var(--ch-tab-hover);
+  color: var(--ch-text-strong);
+}
+
 #chappy-app-shell[data-theme='light'] #go-to-configure-link {
   color: #0c4a6e;
   background-color: rgba(14, 165, 233, 0.2);
