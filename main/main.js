@@ -109,6 +109,7 @@ const createDefaultConfig = () => ({
   activeTabId: 'chappy',
   themePreference: 'system',
   displayMode: 'desktop',
+  chappyPanelOpen: true,
   useSystemBrowserLinks: true,
   preserveTabMemory: true,
   openServicesOnLaunch: false,
@@ -394,6 +395,9 @@ const sanitizeConfigPayload = (payload) => {
     activeTabId,
     themePreference: sanitizeThemePreference(payload.themePreference),
     displayMode: sanitizeDisplayMode(payload.displayMode),
+    // Mirror mode remembers whether the Chappy panel was left showing, so a
+    // restarted mirror comes back up as a mirror rather than as the config panel.
+    chappyPanelOpen: payload.chappyPanelOpen !== false,
     useSystemBrowserLinks: payload.useSystemBrowserLinks !== false,
     preserveTabMemory,
     openServicesOnLaunch,
