@@ -459,6 +459,14 @@ ipcMain.handle('chappy:load-config', () => {
 ipcMain.handle('chappy:save-config', (_event, payload) => {
   const merged = isObject(payload) ? { ...configState, ...payload } : configState;
   configState = writeConfig(merged);
+  // Widget settings are keyed by placed-instance id. This is the moment a
+  // removed widget stops existing, so it is also where its calendar data goes
+  // — including widgets removed while a previous session was running.
+  calendarService.pruneInstances(
+    (Array.isArray(configState.mirrorWidgets) ? configState.mirrorWidgets : [])
+      .map((widget) => (isObject(widget) ? widget.id : ''))
+      .filter(Boolean)
+  );
   return configState;
 });
 

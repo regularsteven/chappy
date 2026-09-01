@@ -9,6 +9,13 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const {
   sanitizeCalendarConfig,
+  sanitizeInstanceSettings,
+  sanitizeInstanceId,
+  diagnoseIcsUrl,
+  decodeBase64Url,
+  googlePublicIcsUrl,
+  httpFailureText,
+  icsCalendarName,
   normalizeIcsUrl,
   isVideoCallLocation,
   normalizeGoogleEvent,
@@ -438,6 +445,86 @@ const icsFixture = (lines) =>
   assert.ok(nominatim.includes('format=jsonv2'));
   assert.ok(nominatim.includes('limit=1'));
   assert.ok(nominatim.includes(encodeURIComponent('Vinohradská 123, Praha 2').replace(/%20/g, '+')) || nominatim.includes('Vinohradsk'));
+}
+
+// ---- per-instance settings -------------------------------------------------
+
+{
+  // Everything the settings pane writes is scoped to one placed widget, so a
+  // removed widget's calendar cannot leak into the next one.
+  const clean = sanitizeInstanceSettings(null);
+  assert.deepEqual(clean.icsUrls, [], 'a widget with no block starts with no calendars');
+  assert.equal(clean.homeAddress, '');
+  assert.equal(clean.homeCoordinates, null);
+  assert.equal(clean.travelMode, 'driving');
+
+  const filled = sanitizeInstanceSettings({
+    icsUrls: ['webcal://example.com/a.ics', 'not a url', 'https://example.com/b.ics'],
+    homeAddress: '  Vinohradská 123  ',
+    homeCoordinates: { lat: 50.07, lng: 14.43 },
+    travelMode: 'nonsense'
+  });
+  assert.deepEqual(
+    filled.icsUrls,
+    ['https://example.com/a.ics', 'https://example.com/b.ics'],
+    'webcal is normalized and junk is dropped'
+  );
+  assert.equal(filled.homeAddress, 'Vinohradská 123');
+  assert.deepEqual(filled.homeCoordinates, { lat: 50.07, lng: 14.43 });
+  assert.equal(filled.travelMode, 'driving', 'an unknown travel mode falls back');
+
+  assert.equal(sanitizeInstanceId('widget-a1b2c3'), 'widget-a1b2c3');
+  assert.equal(sanitizeInstanceId(''), 'default', 'widgets built before instance scoping share one bucket');
+  assert.equal(sanitizeInstanceId('../../etc/passwd'), 'default', 'instance ids never reach the filesystem shape');
+}
+
+// ---- link diagnosis --------------------------------------------------------
+
+{
+  // The link Google's "Get shareable link" button hands out opens the web app;
+  // it answers 401 to a fetch, which used to surface as "Calendar unavailable".
+  const cid = Buffer.from('hello@example.com', 'utf8').toString('base64url');
+  const shared = diagnoseIcsUrl(`https://calendar.google.com/calendar/u/1?cid=${cid}`);
+  assert.equal(shared?.code, 'google-app-link', 'a cid link is named as an app link, not a feed');
+  assert.ok(/Secret address in iCal format/.test(shared.remedy), 'the remedy says where the real link lives');
+  assert.equal(
+    shared.candidateUrl,
+    googlePublicIcsUrl('hello@example.com'),
+    'the decoded calendar id becomes a public-feed candidate to probe'
+  );
+
+  assert.equal(
+    diagnoseIcsUrl('https://calendar.google.com/calendar/ical/hello%40example.com/private-abc/basic.ics'),
+    null,
+    'a real Google secret address passes the shape check'
+  );
+  assert.equal(diagnoseIcsUrl('webcal://p01-calendars.icloud.com/published/2/abc'), null, 'published iCloud links pass');
+  assert.equal(diagnoseIcsUrl('https://www.icloud.com/calendar')?.code, 'icloud-app-link');
+  assert.equal(diagnoseIcsUrl('https://outlook.live.com/calendar/0/view/month')?.code, 'outlook-app-link');
+  assert.equal(
+    diagnoseIcsUrl('https://outlook.office365.com/owa/calendar/abc/reachcalendar.ics'),
+    null,
+    'a published Outlook ICS link passes'
+  );
+  assert.equal(diagnoseIcsUrl('nonsense')?.code, 'not-a-url');
+  assert.equal(diagnoseIcsUrl('')?.code, 'not-a-url');
+
+  assert.equal(decodeBase64Url(Buffer.from('a@b.com').toString('base64url')), 'a@b.com');
+  assert.equal(decodeBase64Url('%%%'), '', 'undecodable input yields no calendar id');
+}
+
+// ---- failure wording -------------------------------------------------------
+
+{
+  // What the widget shows instead of a generic apology.
+  assert.ok(/sign-in/.test(httpFailureText(401)));
+  assert.ok(/sign-in/.test(httpFailureText(403)));
+  assert.ok(/404/.test(httpFailureText(404)));
+  assert.ok(/trouble/.test(httpFailureText(503)));
+
+  assert.equal(icsCalendarName('BEGIN:VCALENDAR\r\nX-WR-CALNAME:Work\r\nEND:VCALENDAR'), 'Work');
+  assert.equal(icsCalendarName('BEGIN:VCALENDAR\r\nX-WR-CALNAME;VALUE=TEXT:Family\r\n'), 'Family');
+  assert.equal(icsCalendarName('BEGIN:VCALENDAR\r\nEND:VCALENDAR'), '', 'a feed without a name is not an error');
 }
 
 console.log('✅ Calendar service logic checks passed.');

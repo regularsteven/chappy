@@ -15,7 +15,16 @@ Everything happens in the widget's own settings (hover the widget, hit ⚙):
      ICS link.
    - **Apple iCloud**: calendar list → share icon → *Public Calendar*, copy the
      link (`webcal://…` links work as-is).
-   Several links can be added, one per line.
+   Up to five links can be added, one row each. Chappy checks every link as you
+   save it and says what it found — the calendar's name and how many events are
+   in the next week, or what went wrong and how to fix it. Each saved calendar
+   keeps an edit button, so a mistyped or expired link can be opened and
+   corrected later.
+
+   **A link that opens your calendar in a browser will not work.** The one
+   Google's *Get shareable link* button copies (`calendar.google.com/calendar/u/1?cid=…`)
+   is that kind of link — it asks whoever opens it to sign in, which Chappy
+   cannot do. The address you want ends in `/basic.ics`.
 2. **Type your home address** — where travel starts. It is resolved once and
    the coordinates are stored locally.
 3. **Pick a travel mode** — 🚗 🚈 🚶 🚴.
@@ -58,19 +67,30 @@ fine without it.
 
 ```json
 {
-  "icsUrls": ["https://calendar.google.com/calendar/ical/…/basic.ics"],
-  "homeAddress": "Vinohradská 123, Praha 2",
-  "homeCoordinates": { "lat": 50.0755, "lng": 14.4378 },
+  "instances": {
+    "widget-a1b2c3": {
+      "icsUrls": ["https://calendar.google.com/calendar/ical/…/basic.ics"],
+      "homeAddress": "Vinohradská 123, Praha 2",
+      "homeCoordinates": { "lat": 50.0755, "lng": 14.4378 },
+      "travelMode": "driving"
+    }
+  },
   "googleClientId": "1234-abc.apps.googleusercontent.com",
   "googleClientSecret": "GOCSPX-…",
   "mapsApiKey": "AIza…",
   "rolloverHour": 17,
   "bufferMinutes": 10,
-  "travelMode": "driving",
   "calendarIds": ["primary"],
   "units": "metric"
 }
 ```
+
+Calendars, home address, and travel mode live under `instances`, keyed by the
+placed widget that set them — the settings pane writes that block, and it is
+removed when the widget is removed from the mirror. The keys outside
+`instances` are global and hand-edited only. Upgrading from an older Chappy
+needs nothing: settings found at the top level are adopted by the first
+Calendar widget that asks for them.
 
 With client credentials present, the widget settings show a **Connect**
 button; approving the consent page in your browser finishes the link. Access
