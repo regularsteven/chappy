@@ -15,13 +15,21 @@
 //     billing, no live traffic — driving / walking / bicycling only
 //   - Google Maps key (Geocoding + Routes APIs): traffic-aware ETAs + transit
 //
-// Endpoints:
-//   GET  /calendar         -> { status, active, today, week, stale, lastUpdatedUtc }
+// Endpoints (all take ?instance=<widget instance id>):
+//   GET  /calendar         -> { status, sources, active, today, week, stale, lastUpdatedUtc }
 //   GET  /next-event       -> alias of /calendar (original endpoint name)
 //   GET  /config           -> non-secret settings for the widget settings pane
-//   POST /config           -> save { icsUrls, homeAddress, travelMode } from the pane
+//   POST /config           -> save { icsUrls, homeAddress, travelMode }, and report
+//                             per-link verdicts so the pane can confirm or explain
+//   POST /config/check     -> validate links without saving them
+//   POST /config/reset     -> forget this instance's settings and caches
 //   POST /auth/start       -> opens the system browser for Google consent
 //   POST /auth/disconnect  -> forgets the stored Google tokens
+//
+// Calendar links, home address and travel mode are scoped to the placed widget
+// instance that set them (config.instances[<id>]), so removing a Calendar
+// widget removes its calendar and a newly added one starts empty. Credentials
+// and the tuning fields stay global and hand-edited.
 //
 // User configuration lives in ~/.chappy/calendar.json (a template is written
 // on first run; the widget settings pane edits it through POST /config, and
@@ -71,6 +79,7 @@ const OAUTH_FLOW_TIMEOUT_MS = 5 * 60 * 1000;
 const ACCESS_TOKEN_SKEW_MS = 60 * 1000;
 const MAX_CALENDARS = 10;
 const MAX_ICS_URLS = 5;
+const ICS_FETCH_TIMEOUT_MS = 15 * 1000;
 const WEEK_DAYS = 7;
 // Fetch window covers today through the end of the week view.
 const FETCH_WINDOW_DAYS = WEEK_DAYS + 1;
@@ -114,6 +123,85 @@ const normalizeIcsUrl = (value) => {
   }
 };
 
+// Base64url -> text, without Buffer assumptions about padding. Google's `cid`
+// query parameter is the calendar id (usually an address) encoded this way.
+const decodeBase64Url = (value) => {
+  const raw = cleanString(value).replace(/-/g, '+').replace(/_/g, '/');
+  if (!raw) {
+    return '';
+  }
+  try {
+    const decoded = Buffer.from(raw, 'base64').toString('utf8');
+    // Reject binary noise: a real calendar id is printable ASCII.
+    return /^[\x20-\x7e]+$/.test(decoded) ? decoded : '';
+  } catch (error) {
+    return '';
+  }
+};
+
+const googlePublicIcsUrl = (calendarId) =>
+  `https://calendar.google.com/calendar/ical/${encodeURIComponent(calendarId)}/public/basic.ics`;
+
+// The link people actually paste is usually the one their calendar app put on
+// the clipboard — which opens the *web app*, not a feed a machine can read.
+// Naming the specific mistake beats "Calendar unavailable" every time.
+//
+// Returns null when the URL is plausibly a feed (only a live fetch can say for
+// sure), otherwise { code, message, remedy, candidateUrl? }.
+const diagnoseIcsUrl = (value) => {
+  const normalized = normalizeIcsUrl(value);
+  if (!normalized) {
+    return {
+      code: 'not-a-url',
+      message: 'That is not a web address.',
+      remedy: 'Paste the whole link, starting with https:// or webcal://.'
+    };
+  }
+  const url = new URL(normalized);
+  const host = url.hostname.toLowerCase();
+  const path = url.pathname;
+
+  if (host === 'calendar.google.com' && !path.startsWith('/calendar/ical/')) {
+    const cid = url.searchParams.get('cid') || url.searchParams.get('src') || '';
+    const calendarId = cid.includes('@') ? cid : decodeBase64Url(cid);
+    return {
+      code: 'google-app-link',
+      message: 'This opens Google Calendar in a browser — it is not a feed Chappy can read.',
+      remedy:
+        'In Google Calendar: Settings → pick this calendar under "Settings for my calendars" → ' +
+        'Integrate calendar → copy "Secret address in iCal format" (it ends in /basic.ics).',
+      candidateUrl: calendarId ? googlePublicIcsUrl(calendarId) : undefined,
+      candidateLabel: calendarId ? `the public feed for ${calendarId}` : undefined
+    };
+  }
+
+  if (
+    (host === 'outlook.live.com' || host.endsWith('outlook.office.com') || host.endsWith('outlook.office365.com')) &&
+    !/\.ics$/i.test(path) &&
+    !path.includes('/calendar/published/')
+  ) {
+    return {
+      code: 'outlook-app-link',
+      message: 'This opens Outlook on the web — it is not a feed Chappy can read.',
+      remedy:
+        'In Outlook: Settings → Calendar → Shared calendars → Publish a calendar → ' +
+        'publish it and copy the ICS link (not the HTML one).'
+    };
+  }
+
+  if (host.endsWith('icloud.com') && !path.includes('/published/')) {
+    return {
+      code: 'icloud-app-link',
+      message: 'This opens iCloud Calendar in a browser — it is not a feed Chappy can read.',
+      remedy:
+        'In Calendar on Mac or iCloud.com: share the calendar, tick "Public Calendar", ' +
+        'and copy the webcal:// link it offers.'
+    };
+  }
+
+  return null;
+};
+
 const sanitizeCalendarConfig = (input) => {
   const raw = isObject(input) ? input : {};
   const lat = Number(raw.homeCoordinates?.lat);
@@ -139,6 +227,10 @@ const sanitizeCalendarConfig = (input) => {
     bufferMinutes: clampInt(raw.bufferMinutes, 10, 0, 120),
     travelMode: TRAVEL_MODES[raw.travelMode] ? raw.travelMode : 'driving',
     calendarIds: calendarIds.length ? calendarIds : ['primary'],
+    // Per-widget-instance settings, layered over the above by
+    // resolveInstanceConfig. Sanitized lazily so one malformed block cannot
+    // take out the whole config.
+    instances: isObject(raw.instances) ? raw.instances : {},
     // Metric throughout — the spec bans miles anywhere in the UI or code.
     units: 'metric'
   };
@@ -394,15 +486,43 @@ let geocodeCachePath = '';
 
 let configCache = null; // { config, mtimeMs }
 let tokensState = undefined; // undefined = not loaded, null = none, object = tokens
-let calendarCache = null; // { events, fetchedAtMs }
-let calendarFetchPromise = null;
-let travelCache = null; // { key, computedAtMs, value: { travel, leaveByUtc } }
-let travelFailure = null; // { key, atMs }
 let geocodeCache = new Map(); // normalized address -> { lat, lng, label? }
 let geocodeFailures = new Map(); // normalized address -> failedAtMs
 let activeAuthFlow = null; // { server, timer }
 
+// Every widget instance owns its calendar links, so it owns its caches too —
+// one instance's broken feed must never blank or poison another's agenda.
+const instanceState = new Map(); // instanceId -> runtime caches (below)
+
+const stateFor = (instanceId) => {
+  let state = instanceState.get(instanceId);
+  if (!state) {
+    state = {
+      calendarCache: null, // { events, fetchedAtMs }
+      calendarFetchPromise: null,
+      travelCache: null, // { key, computedAtMs, value: { travel, leaveByUtc } }
+      travelFailure: null, // { key, atMs }
+      sources: [] // last per-link probe results, surfaced to the settings pane
+    };
+    instanceState.set(instanceId, state);
+  }
+  return state;
+};
+
+// Google tokens are global, so a re-connect (or disconnect) invalidates every
+// instance's event cache at once.
+const clearAllEventCaches = () => {
+  for (const state of instanceState.values()) {
+    state.calendarCache = null;
+    state.travelCache = null;
+    state.travelFailure = null;
+  }
+};
+
 const CONFIG_TEMPLATE = {
+  // Per-widget-instance settings live under `instances`; the top-level copies
+  // below are the pre-0.2 layout, kept as the migration source for the first
+  // instance that asks (see resolveInstanceConfig).
   icsUrls: [],
   homeAddress: '',
   googleClientId: '',
@@ -413,7 +533,8 @@ const CONFIG_TEMPLATE = {
   bufferMinutes: 10,
   travelMode: 'driving',
   calendarIds: ['primary'],
-  units: 'metric'
+  units: 'metric',
+  instances: {}
 };
 
 const init = ({ chappyDir: dir }) => {
@@ -474,6 +595,142 @@ const updateCalendarConfigFile = (patch) => {
   fs.writeFileSync(tempPath, JSON.stringify(merged, null, 2), 'utf8');
   fs.renameSync(tempPath, configPath);
   configCache = null;
+};
+
+// ---- Per-instance settings -------------------------------------------------
+// Everything the widget settings pane writes is scoped to one placed widget,
+// so removing that widget removes its calendar and a freshly added one starts
+// empty. Credentials and the tuning fields stay global (hand-edited only).
+
+// Widgets built before 0.2 poll without an instance id; they all share this
+// bucket, which is also what the pre-0.2 top-level config migrates into.
+const DEFAULT_INSTANCE_ID = 'default';
+const INSTANCE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+const sanitizeInstanceId = (value) => {
+  const raw = cleanString(value);
+  return INSTANCE_ID_PATTERN.test(raw) ? raw : DEFAULT_INSTANCE_ID;
+};
+
+const sanitizeInstanceSettings = (input) => {
+  const raw = isObject(input) ? input : {};
+  const lat = Number(raw.homeCoordinates?.lat);
+  const lng = Number(raw.homeCoordinates?.lng);
+  return {
+    icsUrls: Array.isArray(raw.icsUrls)
+      ? raw.icsUrls.map(normalizeIcsUrl).filter(Boolean).slice(0, MAX_ICS_URLS)
+      : [],
+    homeAddress: cleanString(raw.homeAddress).slice(0, 200),
+    homeCoordinates:
+      Number.isFinite(lat) && Math.abs(lat) <= 90 && Number.isFinite(lng) && Math.abs(lng) <= 180
+        ? { lat, lng }
+        : null,
+    travelMode: TRAVEL_MODES[raw.travelMode] ? raw.travelMode : 'driving'
+  };
+};
+
+const readInstanceBlocks = (config) => (isObject(config.instances) ? config.instances : {});
+
+// One-time adoption: an existing user upgrading from the shared-config layout
+// has their calendar under the top-level keys. The first instance to ask takes
+// it over (so their mirror keeps working); every later instance starts clean.
+const claimLegacyConfig = (config, instanceId) => {
+  const legacy = sanitizeInstanceSettings(config);
+  if (!legacy.icsUrls.length && !legacy.homeAddress) {
+    return null;
+  }
+  updateCalendarConfigFile({
+    instances: { ...readInstanceBlocks(config), [instanceId]: legacy },
+    icsUrls: [],
+    homeAddress: '',
+    homeCoordinates: null
+  });
+  return legacy;
+};
+
+// Global config with this instance's settings layered on top — the shape the
+// rest of the service already expects.
+const resolveInstanceConfig = (instanceId) => {
+  const config = loadCalendarConfig();
+  const blocks = readInstanceBlocks(config);
+  let settings = Object.prototype.hasOwnProperty.call(blocks, instanceId)
+    ? sanitizeInstanceSettings(blocks[instanceId])
+    : null;
+  if (!settings && !Object.keys(blocks).length) {
+    settings = claimLegacyConfig(config, instanceId);
+  }
+  return { ...config, ...(settings || sanitizeInstanceSettings(null)) };
+};
+
+const updateInstanceConfig = (instanceId, patch) => {
+  const config = loadCalendarConfig();
+  const blocks = readInstanceBlocks(config);
+  const current = Object.prototype.hasOwnProperty.call(blocks, instanceId)
+    ? sanitizeInstanceSettings(blocks[instanceId])
+    : sanitizeInstanceSettings(null);
+  updateCalendarConfigFile({
+    instances: { ...blocks, [instanceId]: sanitizeInstanceSettings({ ...current, ...patch }) }
+  });
+};
+
+// The geocode cache holds addresses looked up from event locations, keyed by
+// address rather than by instance. With no calendar widgets left, none of it
+// is referenced by anything — "removed" should mean removed.
+const pruneGeocodeCache = (blocks) => {
+  if (Object.keys(blocks).length || !geocodeCache.size) {
+    return;
+  }
+  geocodeCache = new Map();
+  geocodeFailures = new Map();
+  persistGeocodeCache();
+};
+
+// Drop every trace of one widget instance: its settings block and its caches.
+const forgetInstance = (rawInstanceId) => {
+  const instanceId = sanitizeInstanceId(rawInstanceId);
+  instanceState.delete(instanceId);
+  const config = loadCalendarConfig();
+  const blocks = readInstanceBlocks(config);
+  if (!Object.prototype.hasOwnProperty.call(blocks, instanceId)) {
+    return false;
+  }
+  const remaining = { ...blocks };
+  delete remaining[instanceId];
+  updateCalendarConfigFile({ instances: remaining });
+  pruneGeocodeCache(remaining);
+  return true;
+};
+
+// Called by main.js whenever the renderer persists its mirror layout: any
+// instance block without a live widget belongs to a widget that was removed
+// (including one removed while the app was closed).
+const pruneInstances = (liveInstanceIds) => {
+  if (!Array.isArray(liveInstanceIds) || !configPath) {
+    return 0;
+  }
+  const live = new Set(liveInstanceIds.map(sanitizeInstanceId));
+  const blocks = readInstanceBlocks(loadCalendarConfig());
+  const remaining = {};
+  let removed = 0;
+  for (const [id, block] of Object.entries(blocks)) {
+    if (live.has(id)) {
+      remaining[id] = block;
+    } else {
+      instanceState.delete(id);
+      removed += 1;
+    }
+  }
+  // Instances that polled but never saved have runtime caches and no block.
+  for (const id of Array.from(instanceState.keys())) {
+    if (!live.has(id)) {
+      instanceState.delete(id);
+    }
+  }
+  if (removed) {
+    updateCalendarConfigFile({ instances: remaining });
+    pruneGeocodeCache(remaining);
+  }
+  return removed;
 };
 
 // ---- Token storage ---------------------------------------------------------
@@ -592,7 +849,7 @@ const startAuthFlow = (config) =>
         const redirectUri = `http://127.0.0.1:${server.address().port}/oauth2/callback`;
         await exchangeCodeForTokens(config, code, redirectUri, codeVerifier);
         // Fresh tokens should show data on the next widget poll, not in 15 min.
-        calendarCache = null;
+        clearAllEventCaches();
         finish(200, 'Chappy is connected to Google Calendar. You can close this tab.');
       } catch (error) {
         finish(500, 'Connecting failed: ' + (error.message || 'unknown error.'));
@@ -702,31 +959,131 @@ const fetchGoogleEvents = async (config) => {
   return collected.map(normalizeGoogleEvent).filter(Boolean);
 };
 
-const fetchIcsEvents = async (config) => {
-  const now = new Date();
-  // Start at local midnight so today's all-day events fall inside the window.
-  const windowStartMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const windowEndMs = new Date(now.getFullYear(), now.getMonth(), now.getDate() + FETCH_WINDOW_DAYS).getTime();
-  const events = [];
-  for (const url of config.icsUrls) {
-    const response = await doFetch(url, {
-      headers: { 'User-Agent': OSM_USER_AGENT, Accept: 'text/calendar,*/*;q=0.8' }
+// A link that answers with a sign-in page is the single most common paste
+// mistake, so say which failure it was rather than "unavailable".
+const httpFailureText = (status) => {
+  if (status === 401 || status === 403) {
+    return `That link asked for a sign-in (HTTP ${status}) — a feed has to be readable without one.`;
+  }
+  if (status === 404) {
+    return 'Nothing is published at that address any more (HTTP 404).';
+  }
+  if (status >= 500) {
+    return `The calendar server is having trouble right now (HTTP ${status}).`;
+  }
+  return `The calendar server refused the request (HTTP ${status}).`;
+};
+
+const icsCalendarName = (text) => {
+  const match = /^X-WR-CALNAME[^:\r\n]*:(.+)$/im.exec(text);
+  return match ? cleanString(match[1]).slice(0, 80) : '';
+};
+
+const fetchTimeoutSignal = () =>
+  typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+    ? AbortSignal.timeout(ICS_FETCH_TIMEOUT_MS)
+    : undefined;
+
+// Fetch one feed and report exactly what came back. Never throws — the caller
+// (and, through it, the settings pane) needs the reason more than it needs an
+// exception. A shape diagnosis, when there is one, outranks the raw transport
+// error: "this is a Google app link" is more use than "HTTP 401".
+const fetchIcsSource = async (rawUrl, windowStartMs, windowEndMs) => {
+  const url = normalizeIcsUrl(rawUrl);
+  const shape = url ? diagnoseIcsUrl(rawUrl) : null;
+  const fail = (detail) => ({
+    url: rawUrl,
+    ok: false,
+    eventCount: 0,
+    calendarName: '',
+    events: [],
+    error: shape ? shape.message : detail,
+    detail: shape ? detail : '',
+    remedy: shape ? shape.remedy : '',
+    candidateUrl: shape ? shape.candidateUrl : undefined,
+    candidateLabel: shape ? shape.candidateLabel : undefined
+  });
+
+  if (!url) {
+    return fail('That is not a web address.');
+  }
+  let response;
+  try {
+    response = await doFetch(url, {
+      headers: { 'User-Agent': OSM_USER_AGENT, Accept: 'text/calendar,*/*;q=0.8' },
+      signal: fetchTimeoutSignal()
     });
-    if (!response.ok) {
-      throw new Error(`ICS fetch failed (HTTP ${response.status})`);
+  } catch (error) {
+    return fail(
+      error && (error.name === 'TimeoutError' || error.name === 'AbortError')
+        ? 'The calendar server did not answer in time.'
+        : 'Could not reach that address.'
+    );
+  }
+  if (!response.ok) {
+    return fail(httpFailureText(response.status));
+  }
+  const text = await response.text().catch(() => '');
+  if (!/BEGIN:VCALENDAR/i.test(text)) {
+    return fail('That address answered with a web page, not a calendar feed.');
+  }
+  let parsed;
+  try {
+    parsed = ical.sync.parseICS(text);
+  } catch (error) {
+    return fail('That feed could not be read as iCalendar.');
+  }
+  const events = expandIcsEvents(parsed, windowStartMs, windowEndMs);
+  return {
+    url: rawUrl,
+    ok: true,
+    eventCount: events.length,
+    calendarName: icsCalendarName(text),
+    events,
+    error: '',
+    detail: '',
+    remedy: ''
+  };
+};
+
+const icsWindow = () => {
+  const now = new Date();
+  return {
+    // Start at local midnight so today's all-day events fall inside the window.
+    windowStartMs: new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime(),
+    windowEndMs: new Date(now.getFullYear(), now.getMonth(), now.getDate() + FETCH_WINDOW_DAYS).getTime()
+  };
+};
+
+const fetchIcsEvents = async (config, state) => {
+  const { windowStartMs, windowEndMs } = icsWindow();
+  const results = await Promise.all(
+    config.icsUrls.map((url) => fetchIcsSource(url, windowStartMs, windowEndMs))
+  );
+  // Keep the per-link verdicts even when the batch succeeds: the settings pane
+  // shows them next to each link so a broken one is obvious before it matters.
+  state.sources = results.map(({ events, ...rest }) => rest);
+  const events = [];
+  for (const result of results) {
+    if (result.ok) {
+      events.push(...result.events);
     }
-    const text = await response.text();
-    events.push(...expandIcsEvents(ical.sync.parseICS(text), windowStartMs, windowEndMs));
+  }
+  // One healthy link still renders a mirror; only a total loss is an error.
+  if (results.length && results.every((result) => !result.ok)) {
+    throw new Error(results[0].error);
   }
   return events;
 };
 
 // Fetch every configured source. Partial results are better than none, but a
 // recent full cache is better than a fresh partial one — the caller decides.
-const fetchAllSources = async (config) => {
+const fetchAllSources = async (config, state) => {
   const jobs = [];
   if (config.icsUrls.length) {
-    jobs.push(fetchIcsEvents(config));
+    jobs.push(fetchIcsEvents(config, state));
+  } else {
+    state.sources = [];
   }
   if (config.googleClientId && config.googleClientSecret && loadTokens()) {
     jobs.push(fetchGoogleEvents(config));
@@ -735,6 +1092,7 @@ const fetchAllSources = async (config) => {
   const events = [];
   let failures = 0;
   let sawNeedsAuth = false;
+  let firstError = '';
   for (const result of results) {
     if (result.status === 'fulfilled') {
       events.push(...result.value);
@@ -742,34 +1100,42 @@ const fetchAllSources = async (config) => {
       failures += 1;
       if (result.reason instanceof NeedsAuthError) {
         sawNeedsAuth = true;
+      } else if (!firstError) {
+        firstError = cleanString(result.reason?.message);
       }
     }
   }
   if (!events.length && failures > 0) {
-    throw sawNeedsAuth && jobs.length === 1 ? new NeedsAuthError() : new Error('All calendar sources failed');
+    throw sawNeedsAuth && jobs.length === 1
+      ? new NeedsAuthError()
+      : new Error(firstError || 'All calendar sources failed');
   }
   return { events: events.sort((a, b) => a.startMs - b.startMs), partial: failures > 0 };
 };
 
-const getCalendarEvents = async (config) => {
-  if (calendarCache && Date.now() - calendarCache.fetchedAtMs < CALENDAR_TTL_MS) {
-    return { ...calendarCache, servedStale: false };
+const getCalendarEvents = async (config, state) => {
+  if (state.calendarCache && Date.now() - state.calendarCache.fetchedAtMs < CALENDAR_TTL_MS) {
+    return { ...state.calendarCache, servedStale: false };
   }
-  if (!calendarFetchPromise) {
-    calendarFetchPromise = fetchAllSources(config)
+  if (!state.calendarFetchPromise) {
+    state.calendarFetchPromise = fetchAllSources(config, state)
       .then((result) => {
-        if (result.partial && calendarCache && Date.now() - calendarCache.fetchedAtMs < 2 * CALENDAR_TTL_MS) {
+        if (
+          result.partial &&
+          state.calendarCache &&
+          Date.now() - state.calendarCache.fetchedAtMs < 2 * CALENDAR_TTL_MS
+        ) {
           // One source failed but a recent full snapshot exists — keep it.
-          return { ...calendarCache, servedStale: true };
+          return { ...state.calendarCache, servedStale: true };
         }
-        calendarCache = { events: result.events, fetchedAtMs: Date.now() };
-        return { ...calendarCache, servedStale: result.partial };
+        state.calendarCache = { events: result.events, fetchedAtMs: Date.now() };
+        return { ...state.calendarCache, servedStale: result.partial };
       })
       .finally(() => {
-        calendarFetchPromise = null;
+        state.calendarFetchPromise = null;
       });
   }
-  return calendarFetchPromise;
+  return state.calendarFetchPromise;
 };
 
 // ---- Geocoding and travel --------------------------------------------------
@@ -917,27 +1283,28 @@ const resolveTravel = async (config, event, nowMs) => {
   };
 };
 
-const getTravelFor = async (config, event, nowMs) => {
+const getTravelFor = async (config, state, event, nowMs) => {
   const key = [event.id, event.startUtc, event.location, config.travelMode, config.bufferMinutes].join('|');
-  if (travelCache && travelCache.key === key && nowMs - travelCache.computedAtMs < travelTtlMs(event.startMs, nowMs)) {
-    return travelCache.value;
+  const cached = state.travelCache;
+  if (cached && cached.key === key && nowMs - cached.computedAtMs < travelTtlMs(event.startMs, nowMs)) {
+    return cached.value;
   }
-  if (travelFailure && travelFailure.key === key && nowMs - travelFailure.atMs < TRAVEL_RETRY_MS) {
-    return travelCache && travelCache.key === key ? travelCache.value : null;
+  if (state.travelFailure && state.travelFailure.key === key && nowMs - state.travelFailure.atMs < TRAVEL_RETRY_MS) {
+    return cached && cached.key === key ? cached.value : null;
   }
   try {
     const value = await resolveTravel(config, event, nowMs);
     if (value) {
-      travelCache = { key, computedAtMs: Date.now(), value };
-      travelFailure = null;
+      state.travelCache = { key, computedAtMs: Date.now(), value };
+      state.travelFailure = null;
       return value;
     }
   } catch (error) {
     // Fall through to the stale-if-possible path below.
   }
-  travelFailure = { key, atMs: Date.now() };
+  state.travelFailure = { key, atMs: Date.now() };
   // A failed refresh should not blank a leave-by we already computed.
-  return travelCache && travelCache.key === key ? travelCache.value : null;
+  return state.travelCache && state.travelCache.key === key ? state.travelCache.value : null;
 };
 
 // ---- Response assembly -----------------------------------------------------
@@ -945,6 +1312,7 @@ const getTravelFor = async (config, event, nowMs) => {
 const emptyPayload = (status, detail) => ({
   status,
   detail: detail || undefined,
+  sources: [],
   active: null,
   today: [],
   week: [],
@@ -952,8 +1320,9 @@ const emptyPayload = (status, detail) => ({
   lastUpdatedUtc: null
 });
 
-const getCalendarPayload = async () => {
-  const config = loadCalendarConfig();
+const getCalendarPayload = async (instanceId) => {
+  const config = resolveInstanceConfig(instanceId);
+  const state = stateFor(instanceId);
   const hasIcs = config.icsUrls.length > 0;
   const hasGoogleCreds = Boolean(config.googleClientId && config.googleClientSecret);
   if (!hasIcs && !hasGoogleCreds) {
@@ -968,18 +1337,23 @@ const getCalendarPayload = async () => {
   let events;
   let stale = false;
   try {
-    const result = await getCalendarEvents(config);
+    const result = await getCalendarEvents(config, state);
     ({ events } = result);
     stale = result.servedStale;
   } catch (error) {
     if (error instanceof NeedsAuthError) {
       return { ...emptyPayload('needs-auth'), authPending: Boolean(activeAuthFlow) };
     }
-    if (!calendarCache) {
-      return emptyPayload('error', 'Calendar sources are unreachable.');
+    if (!state.calendarCache) {
+      // Carry the per-link verdicts into the error screen: the widget shows
+      // which link failed and how to fix it instead of a blank apology.
+      return {
+        ...emptyPayload('error', cleanString(error?.message) || 'Calendar sources are unreachable.'),
+        sources: state.sources
+      };
     }
     // Slightly old data beats a blank mirror.
-    ({ events } = calendarCache);
+    ({ events } = state.calendarCache);
     stale = true;
   }
 
@@ -994,7 +1368,7 @@ const getCalendarPayload = async () => {
     let travelUnavailable = false;
     if (active.location) {
       // Keyless geocoding always exists (Nominatim); only home must be set.
-      const resolved = config.homeCoordinates ? await getTravelFor(config, active, nowMs) : null;
+      const resolved = config.homeCoordinates ? await getTravelFor(config, state, active, nowMs) : null;
       if (resolved) {
         ({ travel, leaveByUtc } = resolved);
       } else {
@@ -1014,25 +1388,31 @@ const getCalendarPayload = async () => {
 
   return {
     status: 'ok',
+    sources: state.sources,
     active: activePayload,
     today: buildAgenda(events, now),
     week: buildWeek(events, now),
     stale,
-    lastUpdatedUtc: calendarCache ? new Date(calendarCache.fetchedAtMs).toISOString() : null
+    lastUpdatedUtc: state.calendarCache ? new Date(state.calendarCache.fetchedAtMs).toISOString() : null
   };
 };
 
 // Non-secret settings for the widget's settings pane. Credentials never cross
-// the bridge — only whether they exist.
-const getConfigPayload = () => {
-  const config = loadCalendarConfig();
+// the bridge — only whether they exist. `perInstance` tells widget builds that
+// know about instance scoping that this backend supports it.
+const getConfigPayload = (instanceId) => {
+  const config = resolveInstanceConfig(instanceId);
   return {
+    perInstance: true,
+    instance: instanceId,
     icsUrls: config.icsUrls,
+    sources: stateFor(instanceId).sources,
     homeAddress: config.homeAddress,
     homeConfigured: Boolean(config.homeCoordinates),
     travelMode: config.travelMode,
     bufferMinutes: config.bufferMinutes,
     rolloverHour: config.rolloverHour,
+    maxIcsUrls: MAX_ICS_URLS,
     hasGoogleCreds: Boolean(config.googleClientId && config.googleClientSecret),
     googleConnected: Boolean(loadTokens()),
     hasMapsKey: Boolean(config.mapsApiKey),
@@ -1040,11 +1420,31 @@ const getConfigPayload = () => {
   };
 };
 
-const saveConfigFromWidget = async (body) => {
+// Check a link the way the poller will, and — for a recognised app link with a
+// derivable public feed — check that too, so the pane can offer a one-click
+// fix instead of only an instruction.
+const validateIcsUrls = async (urls) => {
+  const { windowStartMs, windowEndMs } = icsWindow();
+  const results = await Promise.all(urls.map((url) => fetchIcsSource(url, windowStartMs, windowEndMs)));
+  return Promise.all(
+    results.map(async ({ events, ...report }) => {
+      if (report.ok || !report.candidateUrl) {
+        return report;
+      }
+      const probe = await fetchIcsSource(report.candidateUrl, windowStartMs, windowEndMs);
+      return probe.ok
+        ? { ...report, candidateWorks: true, candidateEventCount: probe.eventCount }
+        : { ...report, candidateWorks: false, candidateUrl: undefined, candidateLabel: undefined };
+    })
+  );
+};
+
+const saveConfigFromWidget = async (instanceId, body) => {
   if (!isObject(body)) {
     return { status: 400, payload: { ok: false, error: 'Invalid settings payload.' } };
   }
-  const config = loadCalendarConfig();
+  const config = resolveInstanceConfig(instanceId);
+  const state = stateFor(instanceId);
   const patch = {};
   if (Array.isArray(body.icsUrls)) {
     patch.icsUrls = body.icsUrls.map(normalizeIcsUrl).filter(Boolean).slice(0, MAX_ICS_URLS);
@@ -1052,9 +1452,13 @@ const saveConfigFromWidget = async (body) => {
   if (typeof body.travelMode === 'string' && TRAVEL_MODES[body.travelMode]) {
     patch.travelMode = body.travelMode;
   }
-  let home = null;
   const homeAddress = cleanString(body.homeAddress).slice(0, 200);
-  if (homeAddress && homeAddress !== config.homeAddress) {
+  let home = null;
+  if (!homeAddress && config.homeAddress) {
+    // Clearing the field is a real edit, not a no-op — leave-by turns off.
+    patch.homeAddress = '';
+    patch.homeCoordinates = null;
+  } else if (homeAddress && homeAddress !== config.homeAddress) {
     try {
       home = await geocodeAddress(config, homeAddress);
     } catch (error) {
@@ -1070,17 +1474,28 @@ const saveConfigFromWidget = async (body) => {
     patch.homeCoordinates = { lat: home.lat, lng: home.lng };
   }
   if (!Object.keys(patch).length) {
-    return { status: 200, payload: { ok: true } };
+    return { status: 200, payload: { ok: true, sources: state.sources } };
   }
-  updateCalendarConfigFile(patch);
+  updateInstanceConfig(instanceId, patch);
   if ('icsUrls' in patch) {
-    calendarCache = null;
+    // Events from a link that was just removed must not survive the save.
+    state.calendarCache = null;
+    state.sources = [];
   }
   if ('homeCoordinates' in patch || 'travelMode' in patch) {
-    travelCache = null;
-    travelFailure = null;
+    state.travelCache = null;
+    state.travelFailure = null;
   }
-  return { status: 200, payload: { ok: true, home: home ? { label: home.label } : undefined } };
+  // Saving is also the moment to answer "is this link any good?" — the pane
+  // has nowhere else to learn it, and silence is what dead-ended people.
+  const sources = 'icsUrls' in patch ? await validateIcsUrls(patch.icsUrls) : state.sources;
+  if ('icsUrls' in patch) {
+    state.sources = sources;
+  }
+  return {
+    status: 200,
+    payload: { ok: true, sources, home: home ? { label: home.label } : undefined }
+  };
 };
 
 // ---- HTTP-ish router for chappy-widget://api/* -----------------------------
@@ -1102,19 +1517,31 @@ const handleApiRequest = async (request) => {
   try {
     const url = new URL(request.url);
     const route = url.pathname.replace(/\/+$/, '') || '/';
+    // Widget pages are loaded with ?instance=<id>; they pass it back so their
+    // settings stay their own. Builds that predate this land on 'default'.
+    const instanceId = sanitizeInstanceId(url.searchParams.get('instance'));
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
     if (request.method === 'GET' && (route === '/calendar' || route === '/next-event')) {
-      return jsonResponse(await getCalendarPayload());
+      return jsonResponse(await getCalendarPayload(instanceId));
     }
     if (request.method === 'GET' && route === '/config') {
-      return jsonResponse(getConfigPayload());
+      return jsonResponse(getConfigPayload(instanceId));
     }
     if (request.method === 'POST' && route === '/config') {
       const body = await request.json().catch(() => null);
-      const result = await saveConfigFromWidget(body);
+      const result = await saveConfigFromWidget(instanceId, body);
       return jsonResponse(result.payload, result.status);
+    }
+    if (request.method === 'POST' && route === '/config/check') {
+      const body = await request.json().catch(() => null);
+      const candidates = Array.isArray(body?.icsUrls) ? body.icsUrls.slice(0, MAX_ICS_URLS) : [];
+      return jsonResponse({ ok: true, sources: await validateIcsUrls(candidates) });
+    }
+    if (request.method === 'POST' && route === '/config/reset') {
+      forgetInstance(instanceId);
+      return jsonResponse({ ok: true });
     }
     if (request.method === 'POST' && route === '/auth/start') {
       const config = loadCalendarConfig();
@@ -1126,9 +1553,7 @@ const handleApiRequest = async (request) => {
     if (request.method === 'POST' && route === '/auth/disconnect') {
       closeAuthFlow();
       persistTokens(null);
-      calendarCache = null;
-      travelCache = null;
-      travelFailure = null;
+      clearAllEventCaches();
       return jsonResponse({ ok: true });
     }
     return jsonResponse({ error: 'Unknown calendar API route.' }, 404);
@@ -1141,8 +1566,17 @@ module.exports = {
   WIDGET_API_HOST,
   init,
   handleApiRequest,
+  forgetInstance,
+  pruneInstances,
   _test: {
     sanitizeCalendarConfig,
+    sanitizeInstanceSettings,
+    sanitizeInstanceId,
+    diagnoseIcsUrl,
+    decodeBase64Url,
+    googlePublicIcsUrl,
+    httpFailureText,
+    icsCalendarName,
     normalizeIcsUrl,
     isVideoCallLocation,
     normalizeGoogleEvent,

@@ -80,13 +80,26 @@ folder, which is how a widget can use things that must not live in sandboxed
 web content — calendar credentials and shared configuration. All responses are
 JSON with `Access-Control-Allow-Origin: *`, so any widget origin can call them.
 
+Every endpoint takes `?instance=<instanceId>` — pass through the `instance`
+query parameter the widget page was loaded with. Calendar links, home address,
+and travel mode are stored per placed widget instance, so two Calendar widgets
+configure separately, removing one clears its settings, and a newly added one
+starts empty.
+
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `chappy-widget://api/calendar` | GET | Active event + leave-by time, today's agenda, and the week ahead (see `main/calendar-service.js` for the shape). `status` is `ok`, `not-configured`, `needs-auth`, or `error`. `/next-event` is an alias. |
-| `chappy-widget://api/config` | GET | Non-secret calendar settings for the widget settings pane (sources, home, travel mode; credentials never cross the bridge). |
-| `chappy-widget://api/config` | POST | Save `{ icsUrls, homeAddress, travelMode }` from the pane; the home address is geocoded server-side. |
+| `chappy-widget://api/calendar` | GET | Active event + leave-by time, today's agenda, and the week ahead (see `main/calendar-service.js` for the shape). `status` is `ok`, `not-configured`, `needs-auth`, or `error`; `sources` carries a per-link verdict. `/next-event` is an alias. |
+| `chappy-widget://api/config` | GET | Non-secret calendar settings for the widget settings pane (sources, home, travel mode; credentials never cross the bridge). `perInstance: true` marks a backend that supports instance scoping. |
+| `chappy-widget://api/config` | POST | Save `{ icsUrls, homeAddress, travelMode }` from the pane; the home address is geocoded server-side, and the reply reports what each saved link turned out to be. |
+| `chappy-widget://api/config/check` | POST | Fetch and judge `{ icsUrls }` without saving — used by the pane's "check this link" button. |
+| `chappy-widget://api/config/reset` | POST | Forget this instance's settings and caches. |
 | `chappy-widget://api/auth/start` | POST | Opens Google's consent page in the system browser (loopback OAuth, power tier only). |
 | `chappy-widget://api/auth/disconnect` | POST | Forgets the stored Google tokens. |
+
+A source verdict is `{ url, ok, eventCount, calendarName, error, detail,
+remedy, candidateUrl? }`. `error` is the sentence to show a person, `remedy`
+the steps that fix it, and `candidateUrl` a working replacement when one could
+be derived (a Google app link whose calendar turns out to be public).
 
 The reference **Calendar** widget (`widgets/calendar/`) is the consumer;
 `docs/CALENDAR-SETUP.md` covers setup (the default tier needs nothing but a
