@@ -1,7 +1,7 @@
 {
   "id": "calendar",
   "name": "Calendar",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Your agenda for today, the week, or what's up next — with a leave-by countdown when an event needs travel.",
   "entry": "index.html",
   "icon": "icon.svg",
