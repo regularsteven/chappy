@@ -12,6 +12,12 @@ jobs:
   build-mac:
     name: build-mac
     runs-on: macos-latest
+    env:
+      # Developer ID signing. Squirrel.Mac (behind electron-updater) refuses to
+      # install an update over an ad-hoc-signed app, so a signed build is what
+      # makes self-update work on macOS. Notarization stays off (see doc 012).
+      CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+      CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -114,6 +120,8 @@ jobs:
             mac-release/*.dmg
             mac-release/*.zip
             mac-release/*.blockmap
+            mac-release/latest-mac.yml
             windows-release/*.exe
             windows-release/*.exe.blockmap
-          fail_on_unmatched_files: false
+            windows-release/latest.yml
+          fail_on_unmatched_files: true
