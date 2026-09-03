@@ -5,7 +5,7 @@
 - **Severity:** major
 - **Version bump:** patch
 - **Branches:** feature/mac-signing-keychain
-- **Merged:** TBD
+- **Merged:** 2026-09-03
 
 ## Summary
 
