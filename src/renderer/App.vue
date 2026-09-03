@@ -8,6 +8,10 @@
     <aside
       id="service-sidebar"
       class="sidebar-panel flex w-28 flex-col items-center border-r border-slate-800 bg-slate-900 px-2 pb-6"
+      :class="{ 'sidebar-panel--hidden': isServicesMenuHidden }"
+      :inert="isServicesMenuHidden || undefined"
+      :aria-hidden="isServicesMenuHidden ? 'true' : undefined"
+      @pointerdown="keepServicesMenuRevealed"
     >
       <div
         id="service-tab-list"
@@ -737,6 +741,56 @@
                   </label>
                 </fieldset>
               </div>
+              <div
+                v-if="isMirrorMode"
+                id="auto-hide-services-menu-row"
+                class="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-slate-800 pt-5"
+              >
+                <div>
+                  <h3 class="text-base font-semibold text-white">Auto Hide Services Menu</h3>
+                  <p class="text-sm text-slate-400">
+                    Slides the services menu off the left edge so the mirror lights only its windows and
+                    widgets. A menu button in the top-left corner brings it back for 30 seconds.
+                  </p>
+                </div>
+                <label
+                  id="auto-hide-services-menu-toggle-control"
+                  class="inline-flex cursor-pointer items-center gap-3 rounded-full border px-3 py-2 transition"
+                  :class="
+                    effectiveTheme === 'light'
+                      ? 'border-slate-300 bg-white shadow-[0_6px_20px_rgba(15,23,42,0.08)]'
+                      : 'border-slate-700 bg-slate-950/70'
+                  "
+                >
+                  <span
+                    class="text-xs font-semibold uppercase tracking-widest"
+                    :class="effectiveTheme === 'light' ? 'text-slate-600' : 'text-slate-400'"
+                  >
+                    {{ autoHideServicesMenu ? 'On' : 'Off' }}
+                  </span>
+                  <input
+                    id="auto-hide-services-menu"
+                    v-model="autoHideServicesMenu"
+                    type="checkbox"
+                    class="peer sr-only"
+                  >
+                  <span
+                    class="relative inline-flex h-6 w-11 rounded-full transition"
+                    :class="
+                      autoHideServicesMenu
+                        ? 'bg-sky-500'
+                        : effectiveTheme === 'light'
+                          ? 'bg-slate-300'
+                          : 'bg-slate-700'
+                    "
+                  >
+                    <span
+                      class="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-[0_1px_4px_rgba(15,23,42,0.35)] transition"
+                      :class="autoHideServicesMenu ? 'left-[1.5rem]' : 'left-0.5'"
+                    ></span>
+                  </span>
+                </label>
+              </div>
             </div>
 
             <div
@@ -1088,6 +1142,30 @@
           </p>
 
           <button
+            v-if="isServicesMenuHidden"
+            id="mirror-show-menu-button"
+            type="button"
+            title="Show services menu"
+            class="absolute left-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border opacity-40 transition hover:opacity-100"
+            @click="revealServicesMenu"
+          >
+            <span class="sr-only">Show services menu</span>
+            <svg
+              aria-hidden="true"
+              class="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+            >
+              <path d="M4 7h16" />
+              <path d="M4 12h16" />
+              <path d="M4 17h16" />
+            </svg>
+          </button>
+
+          <button
             id="mirror-add-widget-button"
             type="button"
             title="Add widgets"
@@ -1224,6 +1302,14 @@ const isMirrorMode = computed(() => displayMode.value === 'mirror');
 // both; on the mirror the panel is an overlay over a canvas that keeps running,
 // and hiding it must reveal that canvas without opening or focusing a service.
 const isChappyPanelOpen = ref(true);
+// Auto-hide keeps the services menu off-canvas on the mirror so it lights no
+// pixels until asked for. A reveal is transient: the menu button slides it in
+// and it slides back out after SERVICES_MENU_AUTO_HIDE_MS (persisted: only the
+// toggle, never the reveal).
+const autoHideServicesMenu = ref(false);
+const isServicesMenuRevealed = ref(false);
+const SERVICES_MENU_AUTO_HIDE_MS = 30_000;
+let servicesMenuHideTimer = null;
 const mirrorWidgets = ref([]);
 const installedWidgets = ref([]);
 const widgetInstallStatus = ref('');
@@ -1710,6 +1796,7 @@ const persistConfig = async () => {
       themePreference: themePreference.value,
       displayMode: displayMode.value,
       chappyPanelOpen: isChappyPanelOpen.value,
+      autoHideServicesMenu: autoHideServicesMenu.value,
       useSystemBrowserLinks: useSystemBrowserLinks.value,
       preserveTabMemory: preserveTabMemory.value,
       openServicesOnLaunch: openServicesOnLaunch.value,
@@ -1733,6 +1820,7 @@ const loadConfig = async () => {
     themePreference.value = normalizeThemePreference(persisted?.themePreference);
     displayMode.value = normalizeDisplayMode(persisted?.displayMode);
     isChappyPanelOpen.value = persisted?.chappyPanelOpen !== false;
+    autoHideServicesMenu.value = persisted?.autoHideServicesMenu === true;
     mirrorWidgets.value = (Array.isArray(persisted?.mirrorWidgets) ? persisted.mirrorWidgets : [])
       .map(hydrateMirrorWidget)
       .filter(Boolean);
@@ -1795,6 +1883,54 @@ const chappyTabButtonLabel = computed(() => {
     return 'Chappy';
   }
   return isChappyViewVisible.value ? 'Hide Chappy' : 'Show Chappy';
+});
+
+// The menu only auto-hides over the live canvas. While the Chappy panel is
+// open the user is configuring, and the panel already has its own Hide control.
+const isServicesMenuHidden = computed(() =>
+  isMirrorMode.value
+  && autoHideServicesMenu.value
+  && !isChappyViewVisible.value
+  && !isServicesMenuRevealed.value
+);
+
+const clearServicesMenuHideTimer = () => {
+  if (servicesMenuHideTimer) {
+    clearTimeout(servicesMenuHideTimer);
+    servicesMenuHideTimer = null;
+  }
+};
+
+const endServicesMenuReveal = () => {
+  clearServicesMenuHideTimer();
+  isServicesMenuRevealed.value = false;
+};
+
+const scheduleServicesMenuHide = () => {
+  clearServicesMenuHideTimer();
+  servicesMenuHideTimer = setTimeout(endServicesMenuReveal, SERVICES_MENU_AUTO_HIDE_MS);
+};
+
+const revealServicesMenu = () => {
+  isServicesMenuRevealed.value = true;
+  scheduleServicesMenuHide();
+};
+
+// Touching the revealed menu restarts the countdown so it never slides away
+// from under a finger mid-use.
+const keepServicesMenuRevealed = () => {
+  if (isServicesMenuRevealed.value) {
+    scheduleServicesMenuHide();
+  }
+};
+
+// A reveal is only meaningful while the menu is auto-hiding over the canvas.
+// Drop it whenever that stops being true so the next hide is immediate rather
+// than "whenever the old timer happens to fire".
+watch([autoHideServicesMenu, isMirrorMode, isChappyViewVisible], ([autoHide, mirror, chappyVisible]) => {
+  if (!autoHide || !mirror || chappyVisible) {
+    endServicesMenuReveal();
+  }
 });
 
 const resolveLaunchUrl = (tab) => {
@@ -2901,7 +3037,7 @@ const lastUpdateAppliedLabel = computed(() => {
   }
 });
 
-watch([tabs, activeTabId, themePreference, displayMode, isChappyPanelOpen, mirrorWidgets, useSystemBrowserLinks, preserveTabMemory, openServicesOnLaunch, enableAutoUpdate], () => {
+watch([tabs, activeTabId, themePreference, displayMode, isChappyPanelOpen, autoHideServicesMenu, mirrorWidgets, useSystemBrowserLinks, preserveTabMemory, openServicesOnLaunch, enableAutoUpdate], () => {
   void persistConfig();
 }, { deep: true });
 
@@ -3003,6 +3139,7 @@ onBeforeUnmount(() => {
     clearTimeout(mirrorResizeTimeout);
     mirrorResizeTimeout = null;
   }
+  clearServicesMenuHideTimer();
   if (typeof chappyApi?.setBadgeCount === 'function') {
     void chappyApi.setBadgeCount(0).catch(() => {});
   }
