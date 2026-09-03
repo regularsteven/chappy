@@ -64,7 +64,7 @@ Mandatory rules:
 - **CI / verification**: `npm run build:renderer` — builds the renderer; main/preload run as-is.
 - **Distribution**: `npm run build:full` — builds renderer and packages the desktop app (DMG/ZIP).
 
-Use `npm run build` when you need the vue-update build; use `npm run build:full` when creating a distributable release.
+Use `npm run build:full` when creating a distributable release. Installed apps update themselves from the tagged GitHub Release (electron-updater reads `latest-mac.yml` / `latest.yml` from its assets), so a change reaches users only once it is tagged and released.
 
 ## CI and quality gates
 

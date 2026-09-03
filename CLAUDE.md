@@ -43,6 +43,6 @@ sleep 15 && gh run watch "$(gh run list --workflow=release-test.yml --branch=tes
 
 Add one in `docs/features/` from [docs/features/TEMPLATE.md](docs/features/TEMPLATE.md), classified per [docs/VERSIONING.md](docs/VERSIONING.md). Do not bump `package.json` in a feature PR — versions are set at release time from the collated docs.
 
-## Publishing vue-update bundles
+## Self-update ships through GitHub Releases only
 
-`scripts/build-vue-update.js` pins download URLs to `PUBLISH_BRANCH` (default `main`). Do not reintroduce a branch-derived URL: feature branches are deleted after merge, which silently 404s every published bundle.
+The app updates itself with electron-updater, which reads `latest-mac.yml` / `latest.yml` from the tagged GitHub Release. Those files only exist because `build.publish` in `package.json` names the GitHub repo, and only reach users because `release.yml` uploads them. Do not remove either, and do not reintroduce a renderer-only update channel: it cannot carry main-process changes.

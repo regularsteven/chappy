@@ -14,9 +14,10 @@ contextBridge.exposeInMainWorld('chappy', {
   removeWidget: (opts) => ipcRenderer.invoke('chappy:remove-widget', opts),
   checkForUpdate: () => ipcRenderer.invoke('chappy:check-for-update'),
   getUpdateStatus: () => ipcRenderer.invoke('chappy:get-update-status'),
+  getAppVersion: () => ipcRenderer.invoke('chappy:get-app-version'),
+  installUpdate: () => ipcRenderer.invoke('chappy:install-update'),
   setBadgeCount: (count) => ipcRenderer.invoke('chappy:set-badge-count', count),
-  restartToApply: () => ipcRenderer.invoke('chappy:restart-to-apply'),
-  onUpdateReady: (callback) => {
-    ipcRenderer.on('vue-update-ready', () => callback());
+  onUpdateStatus: (callback) => {
+    ipcRenderer.on('app-update-status', (_event, status) => callback(status));
   }
 });

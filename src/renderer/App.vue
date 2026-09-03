@@ -948,7 +948,7 @@
 
             <div
               v-if="chappyApi?.checkForUpdate"
-              id="vue-update-panel"
+              id="app-update-panel"
               class="mt-6 rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]"
             >
               <div class="space-y-4">
@@ -1002,20 +1002,20 @@
                   <div>
                     <h2 class="text-lg font-semibold text-white">Check for update</h2>
                     <p class="text-sm text-slate-400">
-                      See if a new version is available.
+                      New versions download in the background and install when you restart.
                     </p>
-                    <p class="mt-1 text-xs text-slate-500">
-                      Last update: {{ lastUpdateAppliedLabel }}
+                    <p id="app-update-status" class="mt-1 text-xs text-slate-500">
+                      <template v-if="appVersion">Chappy v{{ appVersion }} · </template>{{ updateStatusLabel }}
                     </p>
                   </div>
                   <button
                     id="check-for-update-button"
                     type="button"
                     class="rounded-xl border border-slate-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
-                    :disabled="updateCheckStatus === 'checking'"
-                    @click="handleCheckForUpdate"
+                    :disabled="isUpdateBusy || appUpdate.state === 'unsupported'"
+                    @click="isUpdateReady ? handleInstallUpdate() : handleCheckForUpdate()"
                   >
-                    {{ updateCheckStatus === 'checking' ? 'Checking...' : updateCheckStatus === 'available' ? 'Update available' : updateCheckStatus === 'error' ? 'Check again' : 'Check for update' }}
+                    {{ updateButtonLabel }}
                   </button>
                 </div>
               </div>
@@ -1192,16 +1192,16 @@
       <span class="text-sm font-semibold text-white">{{ toastMessage }}</span>
     </div>
     <div
-      v-else-if="isUpdateReady"
-      id="vue-update-toast"
+      v-else-if="isUpdateReady && !isUpdateToastDismissed"
+      id="app-update-toast"
       class="fixed bottom-6 right-6 z-50 flex items-center gap-4 rounded-2xl border border-slate-700 bg-slate-900 px-5 py-4 shadow-[0_20px_50px_rgba(2,6,23,0.9)]"
     >
-      <span class="text-sm font-semibold text-white">Chappy's got an update — Restart Now</span>
+      <span class="text-sm font-semibold text-white">Chappy v{{ appUpdate.version }} is ready — Restart Now</span>
       <div class="flex gap-2">
         <button
           type="button"
           class="rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-sky-600"
-          @click="handleRestartToApply"
+          @click="handleInstallUpdate"
         >
           Restart Now
         </button>
@@ -1209,7 +1209,7 @@
           type="button"
           class="rounded-xl border border-slate-600 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
           aria-label="Dismiss"
-          @click="isUpdateReady = false"
+          @click="isUpdateToastDismissed = true"
         >
           Close
         </button>
@@ -1337,9 +1337,12 @@ const useSystemBrowserLinks = ref(true);
 const preserveTabMemory = ref(true);
 const openServicesOnLaunch = ref(false);
 const enableAutoUpdate = ref(true);
-const lastUpdateApplied = ref(null);
-const updateCheckStatus = ref(null);
-const isUpdateReady = ref(false);
+const lastUpdateCheck = ref(null);
+const appVersion = ref('');
+// Mirror of the main-process updater state (see main/app-update.js). The
+// main process owns the lifecycle; the renderer only renders it.
+const appUpdate = ref({ state: 'idle', version: null, percent: 0, error: null });
+const isUpdateToastDismissed = ref(false);
 const toastMessage = ref(null);
 let toastTimeout = null;
 const systemPrefersDark = ref(true);
@@ -1826,7 +1829,7 @@ const loadConfig = async () => {
       .filter(Boolean);
     useSystemBrowserLinks.value = persisted?.useSystemBrowserLinks !== false;
     enableAutoUpdate.value = persisted?.enableAutoUpdate !== false;
-    lastUpdateApplied.value = typeof persisted?.lastUpdateApplied === 'string' ? persisted.lastUpdateApplied : null;
+    lastUpdateCheck.value = typeof persisted?.lastUpdateCheck === 'string' ? persisted.lastUpdateCheck : null;
     const shouldOpenServicesOnLaunch = persisted?.openServicesOnLaunch === true;
     preserveTabMemory.value = shouldOpenServicesOnLaunch || persisted?.preserveTabMemory !== false;
     const restoredTabs = [];
@@ -3023,9 +3026,9 @@ watch(preserveTabMemory, (shouldPreserve) => {
   }
 });
 
-const lastUpdateAppliedLabel = computed(() => {
-  const ts = lastUpdateApplied.value;
-  if (!ts) return 'Never';
+const lastUpdateCheckLabel = computed(() => {
+  const ts = lastUpdateCheck.value;
+  if (!ts) return 'never';
   try {
     const d = new Date(ts);
     return d.toLocaleString(undefined, {
@@ -3033,7 +3036,45 @@ const lastUpdateAppliedLabel = computed(() => {
       timeStyle: 'short'
     });
   } catch {
-    return 'Never';
+    return 'never';
+  }
+});
+
+const isUpdateReady = computed(() => appUpdate.value.state === 'ready');
+const isUpdateBusy = computed(() => appUpdate.value.state === 'checking' || appUpdate.value.state === 'downloading');
+
+const updateStatusLabel = computed(() => {
+  const update = appUpdate.value;
+  switch (update.state) {
+    case 'checking':
+      return 'Checking for updates…';
+    case 'downloading':
+      return update.version ? `Downloading v${update.version} (${update.percent}%)` : 'Downloading update…';
+    case 'ready':
+      return `v${update.version} is downloaded and ready to install`;
+    case 'up-to-date':
+      return "You're up to date";
+    case 'error':
+      return update.error ? `Update failed: ${update.error}` : 'Update check failed';
+    case 'unsupported':
+      return 'Updates apply to installed builds only';
+    default:
+      return `Last checked: ${lastUpdateCheckLabel.value}`;
+  }
+});
+
+const updateButtonLabel = computed(() => {
+  switch (appUpdate.value.state) {
+    case 'checking':
+      return 'Checking…';
+    case 'downloading':
+      return 'Downloading…';
+    case 'ready':
+      return 'Restart to update';
+    case 'error':
+      return 'Check again';
+    default:
+      return 'Check for update';
   }
 });
 
@@ -3074,32 +3115,42 @@ const showToast = (message) => {
   }, 3000);
 };
 
+const applyUpdateStatus = (status) => {
+  if (!status || typeof status !== 'object') return;
+  const previousState = appUpdate.value.state;
+  appUpdate.value = {
+    state: typeof status.state === 'string' ? status.state : 'idle',
+    version: typeof status.version === 'string' ? status.version : null,
+    percent: Number.isFinite(status.percent) ? status.percent : 0,
+    error: typeof status.error === 'string' ? status.error : null
+  };
+  // A newly staged update re-arms the toast even if an earlier one was closed.
+  if (appUpdate.value.state === 'ready' && previousState !== 'ready') {
+    isUpdateToastDismissed.value = false;
+  }
+};
+
 const handleCheckForUpdate = async () => {
   if (!chappyApi?.checkForUpdate) return;
-  updateCheckStatus.value = 'checking';
+  appUpdate.value = { ...appUpdate.value, state: 'checking', error: null };
   try {
     const result = await chappyApi.checkForUpdate();
-    if (result?.isReady) {
-      isUpdateReady.value = true;
-      updateCheckStatus.value = 'available';
-    } else if (result?.hasUpdate) {
-      updateCheckStatus.value = 'available';
-    } else if (result?.error) {
-      updateCheckStatus.value = 'error';
-      showToast('Could not check for updates. Try again.');
-    } else {
-      updateCheckStatus.value = null;
+    applyUpdateStatus(result);
+    lastUpdateCheck.value = new Date().toISOString();
+    if (result?.state === 'up-to-date') {
       showToast("You're up to date");
+    } else if (result?.state === 'error') {
+      showToast('Could not check for updates. Try again.');
     }
   } catch {
-    updateCheckStatus.value = 'error';
+    appUpdate.value = { ...appUpdate.value, state: 'error', error: 'Update check failed' };
     showToast('Could not check for updates. Try again.');
   }
 };
 
-const handleRestartToApply = () => {
-  if (chappyApi?.restartToApply) {
-    chappyApi.restartToApply();
+const handleInstallUpdate = () => {
+  if (chappyApi?.installUpdate) {
+    void chappyApi.installUpdate();
   }
 };
 
@@ -3115,19 +3166,20 @@ onMounted(() => {
       prefersDarkMediaQuery.addListener(handleSystemThemeChange);
     }
   }
-  if (chappyApi?.onUpdateReady) {
-    chappyApi.onUpdateReady(() => {
-      isUpdateReady.value = true;
-      updateCheckStatus.value = 'available';
-    });
+  if (chappyApi?.onUpdateStatus) {
+    chappyApi.onUpdateStatus(applyUpdateStatus);
   }
+  void chappyApi?.getAppVersion?.().then((version) => {
+    if (typeof version === 'string') {
+      appVersion.value = version;
+    }
+  }).catch(() => {});
   void loadInstalledWidgets();
   void loadConfig().then(async () => {
-    const status = await chappyApi?.getUpdateStatus?.();
-    if (status?.isReady) {
-      isUpdateReady.value = true;
-      updateCheckStatus.value = 'available';
-    }
+    // A background check may already have staged an update before the
+    // renderer mounted; pick up its state rather than waiting for the next event.
+    const status = await chappyApi?.getUpdateStatus?.().catch(() => null);
+    applyUpdateStatus(status);
   });
 });
 
