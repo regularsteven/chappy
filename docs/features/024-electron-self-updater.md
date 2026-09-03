@@ -5,7 +5,7 @@
 - **Severity:** major
 - **Version bump:** minor
 - **Branches:** feature/electron-self-updater
-- **Merged:** TBD
+- **Merged:** 2026-09-03
 
 ## Summary
 
