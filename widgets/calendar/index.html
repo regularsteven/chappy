@@ -23,6 +23,7 @@
     --accent: #38bdf8;
     --ok: #34d399;
     --err: #fb7185;
+    --warn: #fbbf24;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   /* Class display rules (flex/grid) and inline styles outrank the UA [hidden]
@@ -132,17 +133,26 @@
   }
   .hero-strip .time { color: var(--text-soft); font-weight: 600; }
 
-  /* Status pane (connect / errors). */
-  .status { margin: auto; text-align: center; font-size: 0.95rem; color: var(--text-muted); letter-spacing: 0.04em; }
+  /* Status pane (connect / errors). Every status is a place you can leave
+     from: the settings button here is always visible, never hover-only. */
+  .status-scroll { margin: auto; width: 100%; max-height: 100%; overflow-y: auto; scrollbar-width: none; }
+  .status-scroll::-webkit-scrollbar { display: none; }
+  .status { text-align: center; font-size: 0.95rem; color: var(--text-muted); letter-spacing: 0.04em; }
   .status .headline { color: var(--text-soft); font-size: 1.05rem; }
   .status .fine { margin-top: 0.55rem; font-size: 0.75rem; line-height: 1.5; overflow-wrap: anywhere; }
-  .status button, .settings-footer button, .seg button {
+  .status .fine.err { color: var(--err); }
+  .status .remedy {
+    margin: 0.5rem auto 0; max-width: 22rem; font-size: 0.7rem; line-height: 1.55;
+    color: var(--text-muted); overflow-wrap: anywhere;
+  }
+  .status button, .settings-footer button, .seg button, .editor-actions button, .inline-row button {
     background: none; border: 1px solid var(--field-border); color: var(--text-soft);
     font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase;
     padding: 0.4rem 0.9rem; border-radius: 999px; cursor: pointer;
   }
-  .status button { display: block; margin: 0.9rem auto 0; }
+  .status .status-actions { display: flex; justify-content: center; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.9rem; }
   .status button:hover, .settings-footer button:hover { color: var(--text); border-color: var(--accent); }
+  button:disabled { opacity: 0.45; cursor: default; }
 
   /* Settings pane. */
   .settings-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
@@ -150,6 +160,7 @@
   .settings-title { font-size: 0.85rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--kicker); }
   .field { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.3rem; }
   .field label { font-size: 0.65rem; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-muted); }
+  .field label .label-note { font-weight: 500; letter-spacing: 0.08em; text-transform: none; opacity: 0.75; }
   .field .hint { font-size: 0.65rem; color: var(--text-muted); line-height: 1.45; }
   input[type="text"], textarea {
     width: 100%; background: var(--field-bg); border: 1px solid var(--field-border);
@@ -158,6 +169,9 @@
   }
   textarea { resize: none; height: 3.4rem; }
   input:focus, textarea:focus { border-color: var(--accent); }
+  .inline-row { display: flex; gap: 0.4rem; align-items: stretch; }
+  .inline-row input { flex: 1; min-width: 0; }
+  .inline-row button { white-space: nowrap; padding: 0.35rem 0.75rem; }
   .seg { display: flex; gap: 0.4rem; flex-wrap: wrap; }
   .seg button { flex: 1; padding: 0.35rem 0.3rem; border-radius: 0.55rem; white-space: nowrap; }
   .seg button.active { color: #0b1220; background: var(--accent); border-color: var(--accent); }
@@ -165,7 +179,57 @@
   .save-result { font-size: 0.7rem; line-height: 1.4; min-height: 1rem; overflow-wrap: anywhere; }
   .save-result.ok { color: var(--ok); }
   .save-result.err { color: var(--err); }
-  .settings-footer { margin-top: 0.7rem; display: flex; justify-content: space-between; gap: 0.5rem; }
+  .settings-footer { margin-top: 0.7rem; display: flex; justify-content: flex-end; gap: 0.5rem; }
+
+  /* Calendar list: one editable, inspectable row per link. */
+  .sources { display: flex; flex-direction: column; gap: 0.35rem; }
+  .source {
+    border: 1px solid var(--field-border); border-radius: 0.55rem;
+    padding: 0.4rem 0.5rem; background: var(--field-bg);
+  }
+  .source-head { display: flex; align-items: center; gap: 0.4rem; }
+  .dot { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--text-muted); flex: none; }
+  .dot.ok { background: var(--ok); }
+  .dot.err { background: var(--err); }
+  .dot.unknown { background: var(--warn); }
+  .source-name {
+    flex: 1; min-width: 0; font-size: 0.8rem; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .source-actions { display: flex; gap: 0.15rem; flex: none; }
+  .icon-button {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 0.95rem; line-height: 1; padding: 0.2rem 0.35rem; border-radius: 0.35rem;
+  }
+  .icon-button:hover { color: var(--text); background: rgba(148, 163, 184, 0.16); }
+  .icon-button.danger:hover { color: var(--err); }
+  .source-url {
+    margin-top: 0.2rem; font-size: 0.62rem; color: var(--text-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .source-note { margin-top: 0.2rem; font-size: 0.65rem; line-height: 1.4; overflow-wrap: anywhere; }
+  .source-note.ok { color: var(--ok); }
+  .source-note.err { color: var(--err); }
+  .source-note.unknown { color: var(--warn); }
+  .source-remedy { margin-top: 0.2rem; font-size: 0.62rem; color: var(--text-muted); line-height: 1.5; overflow-wrap: anywhere; }
+  .ghost-button {
+    align-self: flex-start; background: none; border: 1px dashed var(--field-border);
+    color: var(--text-soft); font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase;
+    padding: 0.32rem 0.7rem; border-radius: 999px; cursor: pointer;
+  }
+  .ghost-button:hover { color: var(--text); border-color: var(--accent); }
+  .ghost-button.danger:hover { color: var(--err); border-color: var(--err); }
+  .editor {
+    margin-top: 0.35rem; border: 1px solid var(--field-border); border-radius: 0.55rem;
+    padding: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem;
+  }
+  .editor-actions { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+  .editor-actions button { flex: 1; padding: 0.32rem 0.5rem; border-radius: 0.55rem; }
+  .editor-actions button.primary { color: #0b1220; background: var(--accent); border-color: var(--accent); }
+  .verdict { font-size: 0.65rem; line-height: 1.45; overflow-wrap: anywhere; }
+  .verdict.ok { color: var(--ok); }
+  .verdict.err { color: var(--err); }
+  .verdict.busy { color: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -191,10 +255,16 @@
   </section>
 
   <section id="status-pane" class="pane">
-    <div class="status">
-      <p class="headline" id="status-headline">Connecting…</p>
-      <p class="fine" id="status-fine" hidden></p>
-      <button type="button" id="connect" hidden>Connect Google Calendar</button>
+    <div class="status-scroll">
+      <div class="status">
+        <p class="headline" id="status-headline">Connecting…</p>
+        <p class="fine" id="status-fine" hidden></p>
+        <p class="remedy" id="status-remedy" hidden></p>
+        <div class="status-actions">
+          <button type="button" id="connect" hidden>Connect Google Calendar</button>
+          <button type="button" id="status-settings">Open settings</button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -210,13 +280,35 @@
         </div>
       </div>
       <div class="field">
-        <label for="ics-input">Calendar links (one per line)</label>
-        <textarea id="ics-input" spellcheck="false" placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"></textarea>
-        <p class="hint">Google Calendar: Settings → your calendar → Integrate calendar → <b>Secret address in iCal format</b>. Apple and Outlook publish similar private links.</p>
+        <label>Calendars</label>
+        <div class="sources" id="sources-list"></div>
+        <p class="hint" id="sources-empty" hidden>No calendar yet.</p>
+        <button type="button" class="ghost-button" id="add-source">+ Add a calendar</button>
+        <div class="editor" id="source-editor" hidden>
+          <input id="source-input" type="text" spellcheck="false" autocomplete="off"
+                 placeholder="https://calendar.google.com/calendar/ical/…/basic.ics" />
+          <p class="verdict" id="source-verdict"></p>
+          <p class="source-remedy" id="source-remedy" hidden></p>
+          <button type="button" class="ghost-button" id="source-candidate" hidden></button>
+          <div class="editor-actions">
+            <button type="button" id="source-cancel">Cancel</button>
+            <button type="button" id="source-check">Check</button>
+            <button type="button" id="source-apply" class="primary">Save</button>
+          </div>
+        </div>
+        <p class="hint">
+          Google Calendar: Settings → your calendar → Integrate calendar →
+          <b>Secret address in iCal format</b> (it ends in <b>/basic.ics</b>). Apple and
+          Outlook publish similar private links. A link that opens the calendar in a
+          browser will not work.
+        </p>
       </div>
       <div class="field">
-        <label for="home-input">Home address</label>
-        <input id="home-input" type="text" autocomplete="off" placeholder="Vinohradská 123, Praha 2" />
+        <label for="home-input">Home address <span class="label-note">— for Leave by</span></label>
+        <div class="inline-row">
+          <input id="home-input" type="text" autocomplete="off" placeholder="Vinohradská 123, Praha 2" />
+          <button type="button" id="home-apply" disabled>Apply</button>
+        </div>
       </div>
       <div class="field">
         <label id="mode-label">Travel mode</label>
@@ -233,11 +325,18 @@
         <p class="hint" id="google-status"></p>
         <div class="seg"><button type="button" id="google-connect" hidden>Connect</button></div>
       </div>
+      <div class="field" id="reset-field">
+        <label>This widget</label>
+        <button type="button" class="ghost-button danger" id="reset-instance">Start over</button>
+        <p class="hint" id="reset-hint">
+          Clears the calendars and address above. Removing the widget from the mirror
+          clears them too, so a newly added Calendar starts empty.
+        </p>
+      </div>
       <p class="save-result" id="save-result"></p>
     </div>
     <div class="settings-footer">
       <button type="button" id="cancel-settings">Done</button>
-      <button type="button" id="save-settings">Save</button>
     </div>
   </section>
 
@@ -252,10 +351,17 @@
   var NOW_MS = 5 * 60 * 1000;
   var VIEWS = ['today', 'week', 'next'];
   var MODE_GLYPHS = { driving: '🚗', walking: '🚶', transit: '🚈', bicycling: '🚴' };
+  var GOOGLE_REMEDY =
+    'In Google Calendar: Settings → pick this calendar under "Settings for my calendars" → ' +
+    'Integrate calendar → copy "Secret address in iCal format" (it ends in /basic.ics).';
 
   var params = new URLSearchParams(location.search);
   var instanceId = params.get('instance') || 'default';
   var STORE_KEY = 'chappy-calendar:' + instanceId;
+  /* Every bridge call carries the instance id so this widget's calendars stay
+     its own — a second Calendar on the mirror configures separately, and
+     removing this one takes its settings with it. */
+  var QS = '?instance=' + encodeURIComponent(instanceId);
 
   var mainPane = document.getElementById('main-pane');
   var statusPane = document.getElementById('status-pane');
@@ -274,19 +380,37 @@
   var heroStrip = document.getElementById('hero-strip');
   var statusHeadline = document.getElementById('status-headline');
   var statusFine = document.getElementById('status-fine');
+  var statusRemedy = document.getElementById('status-remedy');
   var connectButton = document.getElementById('connect');
-  var icsInput = document.getElementById('ics-input');
+  var sourcesList = document.getElementById('sources-list');
+  var sourcesEmpty = document.getElementById('sources-empty');
+  var addSourceButton = document.getElementById('add-source');
+  var sourceEditor = document.getElementById('source-editor');
+  var sourceInput = document.getElementById('source-input');
+  var sourceVerdict = document.getElementById('source-verdict');
+  var sourceRemedy = document.getElementById('source-remedy');
+  var sourceCandidate = document.getElementById('source-candidate');
+  var sourceCheckButton = document.getElementById('source-check');
+  var sourceApplyButton = document.getElementById('source-apply');
   var homeInput = document.getElementById('home-input');
+  var homeApply = document.getElementById('home-apply');
   var transitHint = document.getElementById('transit-hint');
   var googleField = document.getElementById('google-field');
   var googleStatus = document.getElementById('google-status');
   var googleConnect = document.getElementById('google-connect');
+  var resetField = document.getElementById('reset-field');
+  var resetHint = document.getElementById('reset-hint');
   var saveResult = document.getElementById('save-result');
   var viewButtons = Array.prototype.slice.call(document.querySelectorAll('#view-seg button'));
   var modeButtons = Array.prototype.slice.call(document.querySelectorAll('#mode-seg button'));
 
   var payload = null;
   var cfg = null;
+  var icsUrls = [];
+  /* url -> last known verdict, from whichever call reported it most recently. */
+  var verdicts = {};
+  var editingIndex = null; /* null = closed, -1 = adding, >= 0 = editing */
+  var candidateUrl = '';
   var pollTimer = null;
   var authClicked = false;
   var autoOpenedSettings = false;
@@ -331,11 +455,15 @@
     settingsPane.classList.toggle('active', pane === 'settings');
   }
 
-  function showStatus(headline, fine, withConnect) {
+  function showStatus(headline, fine, withConnect, options) {
+    var opts = options || {};
     showPane('status');
     statusHeadline.textContent = headline;
     statusFine.hidden = !fine;
     statusFine.textContent = fine || '';
+    statusFine.className = 'fine' + (opts.error ? ' err' : '');
+    statusRemedy.hidden = !opts.remedy;
+    statusRemedy.textContent = opts.remedy || '';
     connectButton.hidden = !withConnect;
   }
 
@@ -500,16 +628,27 @@
     }
   }
 
+  /* The failing link, if the backend named one, so the error screen can say
+     what is actually wrong instead of apologising. */
+  function firstBrokenSource() {
+    var list = (payload && payload.sources) || [];
+    for (var i = 0; i < list.length; i += 1) {
+      if (list[i] && !list[i].ok) return list[i];
+    }
+    return null;
+  }
+
   function render() {
     if (!payload) {
       return;
     }
+    rememberVerdicts(payload.sources);
     if (payload.status === 'not-configured') {
       if (!autoOpenedSettings) {
         autoOpenedSettings = true;
         openSettings();
       } else if (!settingsPane.classList.contains('active')) {
-        showStatus('No calendar yet', 'Hover and hit ⚙ to add a calendar link.', false);
+        showStatus('No calendar yet', 'Add a calendar link to get started.', false);
       }
       return;
     }
@@ -525,7 +664,13 @@
     }
     if (payload.status === 'error') {
       if (settingsPane.classList.contains('active')) return;
-      showStatus('Calendar unavailable', 'Chappy will keep retrying quietly.', false);
+      var broken = firstBrokenSource();
+      showStatus(
+        broken ? 'That calendar link did not work' : 'Calendar unavailable',
+        (broken && broken.error) || payload.detail || 'Chappy will keep retrying quietly.',
+        false,
+        { error: true, remedy: broken && broken.remedy }
+      );
       return;
     }
     if (settingsPane.classList.contains('active')) {
@@ -559,7 +704,7 @@
   }
 
   function poll() {
-    fetch(API + '/calendar')
+    fetch(API + '/calendar' + QS)
       .then(function (response) {
         if (!response.ok) throw new Error('HTTP ' + response.status);
         return response.json();
@@ -567,18 +712,26 @@
       .then(function (data) {
         payload = data;
         render();
+        if (settingsPane.classList.contains('active')) renderSources();
       })
       .catch(function () {
         /* Keep showing the last data; only fall to a status screen when the
            widget has never rendered anything (a blank mirror looks broken). */
-        if (!payload) showStatus('Calendar unavailable', 'Chappy will keep retrying quietly.', false);
+        if (!payload) {
+          showStatus('Calendar unavailable', 'Chappy is not answering — settings are still reachable below.', false);
+        }
       })
       .then(schedulePoll);
   }
 
+  function repollSoon(delay) {
+    if (pollTimer) clearTimeout(pollTimer);
+    pollTimer = setTimeout(poll, delay || 400);
+  }
+
   function startAuth(onFail) {
     authClicked = true;
-    fetch(API + '/auth/start', { method: 'POST' })
+    fetch(API + '/auth/start' + QS, { method: 'POST' })
       .then(function (response) { return response.json(); })
       .then(function (result) {
         if (!result.ok) {
@@ -594,7 +747,70 @@
     pollTimer = setTimeout(poll, AUTH_POLL_MS);
   }
 
-  /* ---- settings ---- */
+  /* ---- link diagnosis -------------------------------------------------- */
+  /* A copy of the check in main/calendar-service.js, so a paste is judged as
+     it is typed rather than after a round trip. The backend stays the
+     authority — it is the one that actually fetches the link. */
+
+  function decodeCid(value) {
+    try {
+      var decoded = atob(String(value || '').replace(/-/g, '+').replace(/_/g, '/'));
+      return /^[\x20-\x7e]+$/.test(decoded) ? decoded : '';
+    } catch (error) {
+      return '';
+    }
+  }
+
+  function diagnoseUrl(raw) {
+    var value = String(raw || '').trim();
+    if (!value) {
+      return { code: 'empty', message: 'Paste a calendar link.' };
+    }
+    var url;
+    try {
+      url = new URL(value.replace(/^webcal:\/\//i, 'https://'));
+    } catch (error) {
+      return {
+        code: 'not-a-url',
+        message: 'That is not a web address.',
+        remedy: 'Paste the whole link, starting with https:// or webcal://.'
+      };
+    }
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      return { code: 'not-a-url', message: 'That is not a web address.', remedy: 'Use an https:// or webcal:// link.' };
+    }
+    var host = url.hostname.toLowerCase();
+    if (host === 'calendar.google.com' && url.pathname.indexOf('/calendar/ical/') !== 0) {
+      var cid = url.searchParams.get('cid') || url.searchParams.get('src') || '';
+      var calendarId = cid.indexOf('@') !== -1 ? cid : decodeCid(cid);
+      return {
+        code: 'google-app-link',
+        message: 'This opens Google Calendar in a browser — it is not a feed Chappy can read.',
+        remedy: GOOGLE_REMEDY + (calendarId ? ' The calendar is ' + calendarId + '.' : '')
+      };
+    }
+    if (
+      (host === 'outlook.live.com' || /outlook\.office(365)?\.com$/.test(host)) &&
+      !/\.ics$/i.test(url.pathname) &&
+      url.pathname.indexOf('/calendar/published/') === -1
+    ) {
+      return {
+        code: 'outlook-app-link',
+        message: 'This opens Outlook on the web — it is not a feed Chappy can read.',
+        remedy: 'In Outlook: Settings → Calendar → Shared calendars → Publish a calendar, then copy the ICS link.'
+      };
+    }
+    if (/icloud\.com$/.test(host) && url.pathname.indexOf('/published/') === -1) {
+      return {
+        code: 'icloud-app-link',
+        message: 'This opens iCloud Calendar in a browser — it is not a feed Chappy can read.',
+        remedy: 'Share the calendar, tick "Public Calendar", and copy the webcal:// link it offers.'
+      };
+    }
+    return null;
+  }
+
+  /* ---- settings -------------------------------------------------------- */
 
   function syncViewButtons() {
     viewButtons.forEach(function (button) {
@@ -613,66 +829,454 @@
     saveResult.className = 'save-result' + (message ? (ok ? ' ok' : ' err') : '');
   }
 
+  function rememberVerdicts(list) {
+    if (!Array.isArray(list)) return;
+    list.forEach(function (item) {
+      if (item && typeof item.url === 'string') verdicts[item.url] = item;
+    });
+  }
+
+  /* Both ends of a feed URL identify it — the host and the /basic.ics tail —
+     so trim the unreadable middle rather than the informative end. */
+  function shortUrl(url) {
+    var text = String(url);
+    try {
+      var parsed = new URL(text.replace(/^webcal:\/\//i, 'https://'));
+      text = parsed.hostname + parsed.pathname;
+    } catch (error) {}
+    return text.length > 52 ? text.slice(0, 26) + '…' + text.slice(-24) : text;
+  }
+
+  /* The backend saves the normalized form of a link, so compare on that when
+     matching a verdict back to what was typed. */
+  function sameUrl(a, b) {
+    var normalize = function (value) {
+      try {
+        return new URL(String(value).trim().replace(/^webcal:\/\//i, 'https://')).toString();
+      } catch (error) {
+        return String(value).trim();
+      }
+    };
+    return normalize(a) === normalize(b);
+  }
+
+  function sourceLabel(url, verdict) {
+    if (verdict && verdict.calendarName) return verdict.calendarName;
+    try {
+      return new URL(String(url).replace(/^webcal:\/\//i, 'https://')).hostname;
+    } catch (error) {
+      return 'Calendar link';
+    }
+  }
+
+  function iconButton(glyph, title, danger, onClick) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'icon-button' + (danger ? ' danger' : '');
+    button.title = title;
+    button.setAttribute('aria-label', title);
+    button.textContent = glyph;
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  /* One row per saved link: what it is, whether it works, and — the part that
+     was missing — a way to open it back up and change it. */
+  function renderSources() {
+    sourcesList.textContent = '';
+    sourcesEmpty.hidden = icsUrls.length > 0 || editingIndex !== null;
+    addSourceButton.hidden =
+      editingIndex !== null || icsUrls.length >= (cfg && cfg.maxIcsUrls ? cfg.maxIcsUrls : 5);
+    icsUrls.forEach(function (url, index) {
+      /* The row being edited is replaced by the editor below, so its link and
+         its diagnosis are not repeated twice on screen. */
+      if (index === editingIndex) return;
+      var verdict = verdicts[url];
+      var state = !verdict ? 'unknown' : verdict.ok ? 'ok' : 'err';
+      var card = document.createElement('div');
+      card.className = 'source';
+
+      var head = document.createElement('div');
+      head.className = 'source-head';
+      var dot = document.createElement('span');
+      dot.className = 'dot ' + state;
+      var name = document.createElement('span');
+      name.className = 'source-name';
+      name.textContent = sourceLabel(url, verdict);
+      var actions = document.createElement('span');
+      actions.className = 'source-actions';
+      actions.appendChild(iconButton('✎', 'Edit this link', false, function () { openEditor(index); }));
+      actions.appendChild(iconButton('✕', 'Remove this calendar', true, function () { removeSource(index); }));
+      head.appendChild(dot);
+      head.appendChild(name);
+      head.appendChild(actions);
+      card.appendChild(head);
+
+      var urlLine = document.createElement('p');
+      urlLine.className = 'source-url';
+      urlLine.textContent = shortUrl(url);
+      urlLine.title = url;
+      card.appendChild(urlLine);
+
+      var note = document.createElement('p');
+      note.className = 'source-note ' + state;
+      if (state === 'ok') {
+        note.textContent =
+          verdict.eventCount === 1 ? '1 event in the next week' : verdict.eventCount + ' events in the next week';
+      } else if (state === 'err') {
+        note.textContent = verdict.error || 'This link is not working.';
+      } else {
+        note.textContent = 'Not checked yet.';
+      }
+      card.appendChild(note);
+
+      if (state === 'err' && verdict.remedy) {
+        var remedy = document.createElement('p');
+        remedy.className = 'source-remedy';
+        remedy.textContent = verdict.remedy;
+        card.appendChild(remedy);
+      }
+      sourcesList.appendChild(card);
+    });
+  }
+
+  function setVerdict(message, kind) {
+    sourceVerdict.textContent = message || '';
+    sourceVerdict.className = 'verdict' + (message ? ' ' + kind : '');
+  }
+
+  function showEditorReport(report) {
+    if (!report) {
+      setVerdict('', '');
+      sourceRemedy.hidden = true;
+      sourceCandidate.hidden = true;
+      return;
+    }
+    if (report.ok) {
+      setVerdict(
+        'Looks good — ' +
+          (report.calendarName ? '“' + report.calendarName + '”, ' : '') +
+          report.eventCount + ' event' + (report.eventCount === 1 ? '' : 's') + ' in the next week.',
+        'ok'
+      );
+      sourceRemedy.hidden = true;
+      sourceCandidate.hidden = true;
+      return;
+    }
+    setVerdict(report.error || 'That link did not work.', 'err');
+    sourceRemedy.hidden = !report.remedy;
+    sourceRemedy.textContent = report.remedy || '';
+    candidateUrl = report.candidateWorks && report.candidateUrl ? report.candidateUrl : '';
+    sourceCandidate.hidden = !candidateUrl;
+    if (candidateUrl) {
+      sourceCandidate.textContent = 'Use ' + (report.candidateLabel || 'the public feed') + ' instead';
+    }
+  }
+
+  function liveHint() {
+    var problem = diagnoseUrl(sourceInput.value);
+    if (!problem || problem.code === 'empty') {
+      setVerdict('', '');
+      sourceRemedy.hidden = true;
+      sourceCandidate.hidden = true;
+      return;
+    }
+    setVerdict(problem.message, 'err');
+    sourceRemedy.hidden = !problem.remedy;
+    sourceRemedy.textContent = problem.remedy || '';
+    sourceCandidate.hidden = true;
+  }
+
+  function openEditor(index) {
+    editingIndex = index;
+    candidateUrl = '';
+    sourceEditor.hidden = false;
+    sourceInput.value = index >= 0 ? icsUrls[index] : '';
+    renderSources();
+    setSaveResult('', true);
+    var known = index >= 0 ? verdicts[icsUrls[index]] : null;
+    if (known && !known.ok) {
+      showEditorReport(known);
+    } else {
+      showEditorReport(null);
+    }
+    sourceInput.focus();
+    sourceInput.select();
+  }
+
+  function closeEditor() {
+    editingIndex = null;
+    candidateUrl = '';
+    sourceEditor.hidden = true;
+    showEditorReport(null);
+    renderSources();
+  }
+
+  function busyEditor(busy) {
+    sourceCheckButton.disabled = busy;
+    sourceApplyButton.disabled = busy;
+  }
+
+  /* Writes the list and reports what the backend made of each link. */
+  function commitSources(nextUrls, options) {
+    var opts = options || {};
+    return fetch(API + '/config' + QS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ icsUrls: nextUrls })
+    })
+      .then(function (response) { return response.json(); })
+      .then(function (result) {
+        if (!result.ok) {
+          setSaveResult(result.error || 'Saving failed.', false);
+          return null;
+        }
+        if (Array.isArray(result.sources)) {
+          /* Trust the backend's list: it normalized the links and dropped any
+             it could not use, so the rows match what is actually stored. A
+             save also wipes cached verdicts for links that are gone. */
+          icsUrls = result.sources.map(function (item) { return item.url; });
+          verdicts = {};
+          rememberVerdicts(result.sources);
+        } else {
+          icsUrls = nextUrls.slice();
+        }
+        renderSources();
+        setSaveResult(opts.message || 'Saved.', true);
+        repollSoon();
+        return result;
+      })
+      .catch(function () {
+        setSaveResult('Saving failed — is Chappy still running?', false);
+        return null;
+      });
+  }
+
+  function applyEditorUrl() {
+    var value = sourceInput.value.trim();
+    if (!value) {
+      setVerdict('Paste a calendar link first.', 'err');
+      return;
+    }
+    var next = icsUrls.slice();
+    if (editingIndex >= 0) next[editingIndex] = value;
+    else next.push(value);
+    busyEditor(true);
+    setVerdict('Checking the link…', 'busy');
+    commitSources(next, { message: 'Calendar saved.' })
+      .then(function (result) {
+        busyEditor(false);
+        if (!result) return;
+        var report = (result.sources || []).filter(function (item) { return sameUrl(item.url, value); })[0];
+        if (report && !report.ok) {
+          /* Keep the editor open on a bad link — this is exactly the moment
+             the old build dropped people onto a dead end. */
+          showEditorReport(report);
+          setSaveResult('Saved, but this link is not working yet.', false);
+          return;
+        }
+        closeEditor();
+        setSaveResult(
+          report && report.ok
+            ? 'Added ' + (report.calendarName || sourceLabel(value, report)) + '.'
+            : 'Calendar saved.',
+          true
+        );
+      })
+      .catch(function () { busyEditor(false); });
+  }
+
+  function checkEditorUrl() {
+    var value = sourceInput.value.trim();
+    if (!value) {
+      setVerdict('Paste a calendar link first.', 'err');
+      return;
+    }
+    busyEditor(true);
+    setVerdict('Checking the link…', 'busy');
+    fetch(API + '/config/check' + QS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ icsUrls: [value] })
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .then(function (result) {
+        busyEditor(false);
+        showEditorReport((result.sources || [])[0] || null);
+      })
+      .catch(function () {
+        busyEditor(false);
+        /* Older Chappy builds have no /config/check — fall back to the local
+           shape check so the button still says something useful. */
+        var problem = diagnoseUrl(value);
+        if (problem) {
+          showEditorReport({ ok: false, error: problem.message, remedy: problem.remedy });
+        } else {
+          setVerdict('This Chappy build cannot test links — save it and watch the widget.', 'busy');
+        }
+      });
+  }
+
+  function removeSource(index) {
+    var next = icsUrls.slice();
+    var removed = next.splice(index, 1)[0];
+    if (editingIndex !== null) closeEditor();
+    commitSources(next, { message: 'Removed ' + sourceLabel(removed, verdicts[removed]) + '.' });
+  }
+
   function openSettings() {
     showPane('settings');
     syncViewButtons();
     setSaveResult('', true);
-    fetch(API + '/config')
+    closeEditor();
+    return fetch(API + '/config' + QS)
       .then(function (response) { return response.json(); })
       .then(function (data) {
         cfg = data;
-        icsInput.value = (cfg.icsUrls || []).join('\n');
+        icsUrls = (cfg.icsUrls || []).slice();
+        rememberVerdicts(cfg.sources);
+        rememberVerdicts(payload && payload.sources);
+        renderSources();
         homeInput.value = cfg.homeAddress || '';
+        homeApply.disabled = true;
         pendingMode = cfg.travelMode || 'driving';
         syncModeButtons();
         transitHint.hidden = cfg.hasMapsKey || pendingMode !== 'transit';
         googleField.hidden = !cfg.hasGoogleCreds;
+        /* Instance scoping is a backend capability; say the true thing for
+           whichever Chappy build this widget is running on. */
+        resetField.hidden = false;
+        resetHint.textContent = cfg.perInstance
+          ? 'Clears the calendars and address above. Removing the widget from the mirror clears them too, ' +
+            'so a newly added Calendar starts empty.'
+          : 'Clears the calendars and address above. This Chappy build shares them between all Calendar widgets.';
         if (cfg.hasGoogleCreds) {
           googleStatus.textContent = cfg.googleConnected
             ? 'Connected — events sync through the Google API too.'
             : 'Credentials found, not connected yet.';
           googleConnect.hidden = cfg.googleConnected;
         }
+        if (!icsUrls.length) openEditor(-1);
       })
       .catch(function () {
         setSaveResult('Couldn’t load current settings.', false);
       });
   }
 
-  function saveSettings() {
+  function saveHome() {
+    var value = homeInput.value.trim();
+    homeApply.disabled = true;
     setSaveResult('Saving…', true);
-    var body = {
-      icsUrls: icsInput.value.split('\n').map(function (line) { return line.trim(); }).filter(Boolean),
-      homeAddress: homeInput.value.trim(),
-      travelMode: pendingMode
-    };
-    fetch(API + '/config', {
+    fetch(API + '/config' + QS, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify({ homeAddress: value, travelMode: pendingMode })
     })
       .then(function (response) { return response.json(); })
       .then(function (result) {
         if (!result.ok) {
           setSaveResult(result.error || 'Saving failed.', false);
+          homeApply.disabled = false;
           return;
         }
-        setSaveResult(result.home && result.home.label ? 'Home: ' + result.home.label : 'Saved.', true);
-        if (pollTimer) clearTimeout(pollTimer);
-        pollTimer = setTimeout(poll, 400);
+        if (cfg) cfg.homeAddress = value;
+        setSaveResult(
+          result.home && result.home.label ? 'Home: ' + result.home.label : value ? 'Home saved.' : 'Home address cleared.',
+          true
+        );
+        repollSoon();
+      })
+      .catch(function () {
+        setSaveResult('Saving failed — is Chappy still running?', false);
+        homeApply.disabled = false;
+      });
+  }
+
+  function saveTravelMode() {
+    fetch(API + '/config' + QS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ travelMode: pendingMode })
+    })
+      .then(function (response) { return response.json(); })
+      .then(function (result) {
+        setSaveResult(result.ok ? 'Travel mode saved.' : result.error || 'Saving failed.', Boolean(result.ok));
+        if (result.ok) repollSoon();
       })
       .catch(function () {
         setSaveResult('Saving failed — is Chappy still running?', false);
       });
   }
 
+  function resetInstance() {
+    setSaveResult('Clearing…', true);
+    fetch(API + '/config/reset' + QS, { method: 'POST' })
+      .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
+      })
+      .catch(function () {
+        /* Older builds have no reset route: emptying the settings is the same
+           outcome for the user, so do that instead of failing. */
+        return fetch(API + '/config' + QS, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ icsUrls: [], homeAddress: '' })
+        }).then(function (response) { return response.json(); });
+      })
+      .then(function () {
+        verdicts = {};
+        icsUrls = [];
+        payload = null;
+        autoOpenedSettings = true;
+        repollSoon();
+        /* Reload the pane first — it clears the result line on its way in, so
+           the confirmation has to land after it settles. */
+        return openSettings();
+      })
+      .then(function () {
+        setSaveResult('Cleared — this widget is back to a clean slate.', true);
+      })
+      .catch(function () {
+        setSaveResult('Could not clear these settings.', false);
+      });
+  }
+
   document.getElementById('open-settings').addEventListener('click', openSettings);
+  document.getElementById('status-settings').addEventListener('click', openSettings);
   document.getElementById('cancel-settings').addEventListener('click', function () {
+    closeEditor();
     showPane('main');
     if (payload) render();
     poll();
   });
-  document.getElementById('save-settings').addEventListener('click', saveSettings);
+  addSourceButton.addEventListener('click', function () { openEditor(-1); });
+  document.getElementById('source-cancel').addEventListener('click', closeEditor);
+  sourceCheckButton.addEventListener('click', checkEditorUrl);
+  sourceApplyButton.addEventListener('click', applyEditorUrl);
+  sourceCandidate.addEventListener('click', function () {
+    if (!candidateUrl) return;
+    sourceInput.value = candidateUrl;
+    candidateUrl = '';
+    sourceCandidate.hidden = true;
+    applyEditorUrl();
+  });
+  sourceInput.addEventListener('input', liveHint);
+  sourceInput.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter') applyEditorUrl();
+    if (event.key === 'Escape') closeEditor();
+  });
+  homeInput.addEventListener('input', function () {
+    homeApply.disabled = homeInput.value.trim() === ((cfg && cfg.homeAddress) || '');
+  });
+  homeInput.addEventListener('keydown', function (event) {
+    if (event.key === 'Enter' && !homeApply.disabled) saveHome();
+  });
+  homeApply.addEventListener('click', saveHome);
+  document.getElementById('reset-instance').addEventListener('click', resetInstance);
   viewButtons.forEach(function (button) {
     button.addEventListener('click', function () {
       saveView(button.dataset.view);
@@ -684,11 +1288,12 @@
       pendingMode = button.dataset.mode;
       syncModeButtons();
       transitHint.hidden = (cfg && cfg.hasMapsKey) || pendingMode !== 'transit';
+      saveTravelMode();
     });
   });
   connectButton.addEventListener('click', function () {
     showStatus('Approve access in your browser…', 'A Google sign-in tab was opened on this machine.', false);
-    startAuth(function (message) { showStatus('Couldn’t start sign-in', message, true); });
+    startAuth(function (message) { showStatus('Couldn’t start sign-in', message, true, { error: true }); });
   });
   googleConnect.addEventListener('click', function () {
     googleStatus.textContent = 'Approve access in the browser tab that just opened…';

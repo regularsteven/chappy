@@ -110,6 +110,7 @@ const createDefaultConfig = () => ({
   themePreference: 'system',
   displayMode: 'desktop',
   chappyPanelOpen: true,
+  autoHideServicesMenu: false,
   useSystemBrowserLinks: true,
   preserveTabMemory: true,
   openServicesOnLaunch: false,
@@ -398,6 +399,8 @@ const sanitizeConfigPayload = (payload) => {
     // Mirror mode remembers whether the Chappy panel was left showing, so a
     // restarted mirror comes back up as a mirror rather than as the config panel.
     chappyPanelOpen: payload.chappyPanelOpen !== false,
+    // Opt-in: an existing mirror must not lose its menu on upgrade.
+    autoHideServicesMenu: payload.autoHideServicesMenu === true,
     useSystemBrowserLinks: payload.useSystemBrowserLinks !== false,
     preserveTabMemory,
     openServicesOnLaunch,
@@ -459,6 +462,14 @@ ipcMain.handle('chappy:load-config', () => {
 ipcMain.handle('chappy:save-config', (_event, payload) => {
   const merged = isObject(payload) ? { ...configState, ...payload } : configState;
   configState = writeConfig(merged);
+  // Widget settings are keyed by placed-instance id. This is the moment a
+  // removed widget stops existing, so it is also where its calendar data goes
+  // — including widgets removed while a previous session was running.
+  calendarService.pruneInstances(
+    (Array.isArray(configState.mirrorWidgets) ? configState.mirrorWidgets : [])
+      .map((widget) => (isObject(widget) ? widget.id : ''))
+      .filter(Boolean)
+  );
   return configState;
 });
 
