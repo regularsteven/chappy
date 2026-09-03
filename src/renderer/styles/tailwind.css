@@ -59,6 +59,24 @@
   border-right-color: var(--ch-border);
 }
 
+/* Auto-hidden services menu (Mirror): slide the whole column off the left
+   edge by its own width so the workspace grows into the space. margin-left
+   rather than transform: the canvas has to reclaim the pixels, not just
+   overlap them. */
+#service-sidebar {
+  transition: margin-left 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#service-sidebar.sidebar-panel--hidden {
+  margin-left: -7rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #service-sidebar {
+    transition: none;
+  }
+}
+
 #service-sidebar .service-tab-button {
   width: 4.5rem;
   height: 4.5rem;
@@ -386,13 +404,15 @@
   max-width: 10rem;
 }
 
-#mirror-add-widget-button {
+#mirror-add-widget-button,
+#mirror-show-menu-button {
   background-color: rgba(0, 0, 0, 0.6);
   border-color: #1e293b;
   color: #475569;
 }
 
-#mirror-add-widget-button:hover {
+#mirror-add-widget-button:hover,
+#mirror-show-menu-button:hover {
   color: #cbd5e1;
 }
 
