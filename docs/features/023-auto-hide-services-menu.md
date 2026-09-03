@@ -5,7 +5,7 @@
 - **Severity:** minor
 - **Version bump:** minor
 - **Branches:** feature/auto-hide-services-menu
-- **Merged:** TBD
+- **Merged:** 2026-09-03
 
 ## Summary
 

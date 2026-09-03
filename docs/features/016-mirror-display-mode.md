@@ -5,7 +5,7 @@
 - **Severity:** medium
 - **Version bump:** minor
 - **Branches:** feature/mirror-display-mode
-- **Merged:** TBD
+- **Merged:** 2026-08-19
 
 ## Summary
 

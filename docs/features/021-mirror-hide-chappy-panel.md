@@ -5,7 +5,7 @@
 - **Severity:** minor
 - **Version bump:** minor
 - **Branches:** feature/mirror-hide-chappy-panel
-- **Merged:** TBD
+- **Merged:** 2026-08-31
 
 ## Summary
 

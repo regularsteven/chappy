@@ -5,7 +5,7 @@
 - **Severity:** major
 - **Version bump:** minor
 - **Branches:** feature/calendar-widget-editable-sources
-- **Merged:** TBD
+- **Merged:** 2026-09-01
 
 ## Summary
 
