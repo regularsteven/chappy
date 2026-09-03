@@ -484,7 +484,7 @@ let configPath = '';
 let tokensPath = '';
 let geocodeCachePath = '';
 
-let configCache = null; // { config, mtimeMs }
+let configCache = null; // { config, raw }
 let tokensState = undefined; // undefined = not loaded, null = none, object = tokens
 let geocodeCache = new Map(); // normalized address -> { lat, lng, label? }
 let geocodeFailures = new Map(); // normalized address -> failedAtMs
@@ -560,23 +560,29 @@ const init = ({ chappyDir: dir }) => {
   }
 };
 
+// Keyed on the file's text, not its mtime: two writes can land inside the
+// same timestamp tick (seen on Windows CI), and a stale hit there hands a
+// widget the previous config. The file is a few hundred bytes, so reading it
+// on every request is cheaper than being wrong.
 const loadCalendarConfig = () => {
-  let mtimeMs = -1;
+  let raw = null;
   try {
-    mtimeMs = fs.statSync(configPath).mtimeMs;
+    raw = fs.readFileSync(configPath, 'utf8');
   } catch (error) {
     // Missing file sanitizes to an unconfigured state below.
   }
-  if (configCache && configCache.mtimeMs === mtimeMs) {
+  if (configCache && configCache.raw === raw) {
     return configCache.config;
   }
   let parsed = null;
-  try {
-    parsed = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  } catch (error) {
-    parsed = null;
+  if (raw !== null) {
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      parsed = null;
+    }
   }
-  configCache = { config: sanitizeCalendarConfig(parsed), mtimeMs };
+  configCache = { config: sanitizeCalendarConfig(parsed), raw };
   return configCache.config;
 };
 
