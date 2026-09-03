@@ -4,7 +4,7 @@ const { app, BrowserWindow, ipcMain, nativeImage, net, protocol, session, shell 
 const path = require('path');
 const { pathToFileURL } = require('node:url');
 const extractZip = require('extract-zip');
-const vueUpdate = require('./vue-update.js');
+const appUpdate = require('./app-update.js');
 const calendarService = require('./calendar-service.js');
 
 if (app.setName) {
@@ -406,7 +406,6 @@ const sanitizeConfigPayload = (payload) => {
     openServicesOnLaunch,
     enableAutoUpdate,
     lastUpdateCheck: typeof payload.lastUpdateCheck === 'string' ? payload.lastUpdateCheck : undefined,
-    lastUpdateApplied: typeof payload.lastUpdateApplied === 'string' ? payload.lastUpdateApplied : undefined,
     tabs,
     mirrorWidgets: sanitizeMirrorWidgets(payload.mirrorWidgets)
   };
@@ -914,21 +913,17 @@ const handleWidgetProtocol = (request) => {
 // ---------------------------------------------------------------------------
 
 ipcMain.handle('chappy:check-for-update', async () => {
-  const result = await vueUpdate.checkForUpdate(configState);
+  const result = await appUpdate.check();
   configState.lastUpdateCheck = new Date().toISOString();
   writeConfig(configState);
   return result;
 });
 
-ipcMain.handle('chappy:get-update-status', () => vueUpdate.getUpdateState());
+ipcMain.handle('chappy:get-update-status', () => appUpdate.getState());
 
-ipcMain.handle('chappy:restart-to-apply', () => {
-  vueUpdate.applyPendingUpdate();
-  configState.lastUpdateApplied = new Date().toISOString();
-  writeConfig(configState);
-  app.relaunch();
-  app.quit();
-});
+ipcMain.handle('chappy:get-app-version', () => app.getVersion());
+
+ipcMain.handle('chappy:install-update', () => appUpdate.install());
 
 ipcMain.handle('chappy:set-badge-count', (_event, count) => setAppBadgeCount(count));
 
@@ -992,16 +987,17 @@ const createMainWindow = () => {
   if (process.env.VITE_DEV_SERVER_URL) {
     browserWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
   } else {
-    const rendererPath = vueUpdate.getRendererPath();
-    browserWindow.loadFile(path.join(rendererPath, 'index.html'));
+    browserWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
 
   setWindowsOverlayBadge(currentAppBadgeCount);
 };
 
 app.whenReady().then(() => {
-  if (!process.env.VITE_DEV_SERVER_URL && vueUpdate.shouldRunBackgroundCheck(configState)) {
-    vueUpdate.checkForUpdate(configState).then((result) => {
+  appUpdate.init();
+  appUpdate.cleanupLegacyRendererUpdates(CHAPPY_DIR);
+  if (appUpdate.shouldRunBackgroundCheck(configState)) {
+    void appUpdate.check().then(() => {
       configState.lastUpdateCheck = new Date().toISOString();
       writeConfig(configState);
     });

@@ -9,15 +9,13 @@
     "dev:renderer": "node scripts/free-port.js 5173 && vite --host 127.0.0.1 --port 5173 --strictPort",
     "dev:main": "wait-on http://127.0.0.1:5173 && cross-env ELECTRON_RUN_AS_NODE= VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "build:renderer": "npm run prepare:icons && vite build",
-    "build:vue-update": "npm run build:renderer && node scripts/build-vue-update.js",
     "build:test-zip": "npm run build:renderer && node scripts/package-build.js",
-    "build:desktop": "npm run build:renderer && node scripts/write-vue-build-json.js && node scripts/write-build-info.js && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip --publish never && node scripts/print-release-paths.js",
-    "build:desktop:ci": "npm run build:renderer && node scripts/write-vue-build-json.js && node scripts/write-build-info.js && electron-builder --mac dmg zip --publish never && node scripts/print-release-paths.js",
-    "build:windows": "npm run build:renderer && node scripts/write-vue-build-json.js && node scripts/write-build-info.js && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis portable --publish never && node scripts/print-release-paths.js",
-    "build": "npm run build:vue-update",
+    "build:desktop": "npm run build:renderer && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg zip --publish never && node scripts/print-release-paths.js",
+    "build:desktop:ci": "npm run build:renderer && electron-builder --mac dmg zip --publish never && node scripts/print-release-paths.js",
+    "build:windows": "npm run build:renderer && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis portable --publish never && node scripts/print-release-paths.js",
     "build:full": "npm run build:desktop",
     "start": "npm run dev",
-    "test": "node scripts/check-tabs.mjs && node scripts/check-widgets.mjs && node scripts/check-calendar.mjs && node scripts/check-calendar-instances.mjs",
+    "test": "node scripts/check-tabs.mjs && node scripts/check-widgets.mjs && node scripts/check-calendar.mjs && node scripts/check-calendar-instances.mjs && node scripts/check-app-update.mjs",
     "pack:widget": "node scripts/pack-widget.mjs",
     "test:services": "node scripts/check-service-loads.mjs",
     "test:widget-runtime": "cross-env ELECTRON_RUN_AS_NODE= electron scripts/check-widget-runtime.electron.cjs",
@@ -30,6 +28,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "extract-zip": "^2.0.1",
     "node-ical": "^0.27.1",
     "vue": "^3.4.0"
@@ -57,8 +56,14 @@
       "dist/**/*",
       "main/**/*",
       "resources/**/*",
-      "package.json",
-      "build-info.json"
+      "package.json"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "regularsteven",
+        "repo": "chappy"
+      }
     ],
     "afterSign": "scripts/notarize.js",
     "mac": {
