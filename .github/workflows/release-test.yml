@@ -14,12 +14,6 @@ jobs:
   build-mac:
     name: build-mac
     runs-on: macos-latest
-    env:
-      # Developer ID signing. Squirrel.Mac (behind electron-updater) refuses to
-      # install an update over an ad-hoc-signed app, so a signed build is what
-      # makes self-update work on macOS. Notarization stays off (see doc 012).
-      CSC_LINK: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
-      CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,6 +29,19 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      # Developer ID signing. Squirrel.Mac (behind electron-updater) refuses to
+      # install an update over an ad-hoc-signed app, so a signed build is what
+      # makes self-update work on macOS. The certificate goes into a keychain
+      # here rather than through CSC_LINK: electron-builder's own temporary
+      # keychain fails `security set-key-partition-list` on current macOS
+      # runners ("passphrase you entered is not correct"). electron-builder
+      # then auto-discovers the identity. Notarization stays off (see doc 012).
+      - name: Import Developer ID certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
 
       - name: Build desktop release artifacts
         run: npm run build:desktop:ci

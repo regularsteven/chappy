@@ -37,7 +37,10 @@ assert(/fail_on_unmatched_files:\s*true/.test(release), 'release.yml must fail w
 
 for (const workflow of ['.github/workflows/release.yml', '.github/workflows/release-test.yml']) {
   const text = read(workflow);
-  assert(text.includes('CSC_LINK:'), `${workflow} must sign the macOS build; Squirrel.Mac will not update an ad-hoc-signed app`);
+  assert(
+    text.includes('apple-actions/import-codesign-certs') && text.includes('MACOS_CERTIFICATE_P12_BASE64'),
+    `${workflow} must import the Developer ID certificate before building; Squirrel.Mac will not update an ad-hoc-signed app`
+  );
 }
 
 assert(fs.existsSync(path.join(root, 'main/app-update.js')), 'main/app-update.js is missing');
