@@ -394,13 +394,32 @@
                 <div id="quick-add-section" class="flex shrink-0 flex-col gap-1.5 sm:flex-row sm:items-center">
                   <span class="text-xs font-semibold uppercase tracking-widest text-slate-400">Quick Add</span>
                   <div class="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-                    <input
-                      v-model="quickAddUrl"
-                      type="text"
-                      placeholder="discord.com or https://..."
-                      class="min-w-[12rem] rounded-xl border border-slate-800 bg-slate-950 px-3 py-1.5 text-sm text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
-                      @keydown.enter.prevent="quickAdd"
-                    />
+                    <div class="relative">
+                      <input
+                        id="quick-add-input"
+                        v-model="quickAddUrl"
+                        type="text"
+                        placeholder="Search, or discord.com / https://..."
+                        aria-label="Search services or enter a URL"
+                        class="w-full min-w-[14rem] rounded-xl border border-slate-800 bg-slate-950 py-1.5 pl-3 pr-8 text-sm text-white placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+                        @input="quickAddError = ''"
+                        @keydown.enter.prevent="quickAdd"
+                        @keydown.esc.prevent="clearQuickAdd"
+                      />
+                      <button
+                        v-if="quickAddUrl"
+                        id="quick-add-clear"
+                        type="button"
+                        aria-label="Clear search"
+                        title="Clear"
+                        class="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-800 hover:text-white"
+                        @click="clearQuickAdd"
+                      >
+                        <svg class="h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                          <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                        </svg>
+                      </button>
+                    </div>
                     <button
                       type="button"
                       class="quick-add-button shrink-0 rounded-xl bg-gradient-to-r from-sky-500 to-violet-500 px-3 py-1.5 text-xs font-semibold uppercase tracking-widest transition hover:opacity-90"
@@ -525,6 +544,18 @@
                   </div>
                 </article>
               </div>
+              <p
+                v-if="filteredServices.length === 0"
+                id="available-services-empty"
+                class="mt-5 rounded-2xl border border-dashed border-slate-800 bg-slate-950/50 p-4 text-sm text-slate-400"
+              >
+                <template v-if="quickAddQuery">
+                  No services match “{{ quickAddQuery }}”. Press Add to open it as a custom tab, or clear the search.
+                </template>
+                <template v-else>
+                  No services match the selected filters.
+                </template>
+              </p>
             </div>
 
             <div id="configure-widgets-panel" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 shadow-[0_20px_40px_rgba(2,6,23,0.7)]">
@@ -1225,7 +1256,7 @@ import ClockWidget from './components/ClockWidget.vue';
 import PackageWidget from './components/PackageWidget.vue';
 import WidgetCatalog from './components/WidgetCatalog.vue';
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { accentColors, taxonomies, serviceCatalog } from './data/serviceCatalog.mjs';
+import { accentColors, taxonomies, serviceCatalog, filterServicesByQuery } from './data/serviceCatalog.mjs';
 import {
   builtinWidgets,
   WIDGET_ID_PATTERN,
@@ -1250,14 +1281,21 @@ const defaultIcon = defaultIconUrl;
 const availableServices = serviceCatalog;
 const selectedTaxonomies = ref(new Set());
 
-// Computed filtered services based on taxonomy selection
+// Quick Add doubles as a search box: the same text that Add turns into a URL
+// filters the grid on every keypress. Declared here, ahead of the other Quick
+// Add state, because filteredServices reads it.
+const quickAddUrl = ref('');
+const quickAddQuery = computed(() => quickAddUrl.value.trim());
+
+// Computed filtered services: taxonomy checkboxes first, then the Quick Add
+// query narrows whatever those leave (title or domain, case-insensitive).
 const filteredServices = computed(() => {
-  if (selectedTaxonomies.value.size === 0) {
-    return availableServices;
-  }
-  return availableServices.filter(service => 
-    service.taxonomies?.some(t => selectedTaxonomies.value.has(t))
-  );
+  const byTaxonomy = selectedTaxonomies.value.size === 0
+    ? availableServices
+    : availableServices.filter(service =>
+        service.taxonomies?.some(t => selectedTaxonomies.value.has(t))
+      );
+  return filterServicesByQuery(byTaxonomy, quickAddQuery.value);
 });
 
 // Toggle taxonomy filter
@@ -2450,7 +2488,6 @@ const newTab = reactive({
   url: ''
 });
 
-const quickAddUrl = ref('');
 const quickAddError = ref('');
 const titleError = ref('');
 const urlError = ref('');
@@ -2805,6 +2842,11 @@ const quickAdd = () => {
     addTabFromUrl(normalizedUrl, inferNameFromUrl(normalizedUrl));
   }
   quickAddUrl.value = '';
+};
+
+const clearQuickAdd = () => {
+  quickAddUrl.value = '';
+  quickAddError.value = '';
 };
 
 const addService = (service) => {
