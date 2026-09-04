@@ -250,3 +250,31 @@ export const serviceCatalogBase = [
     taxonomies: ['productivity']
   }
 ];
+
+// Quick Add doubles as a search box over the catalog. A query matches a
+// service when it appears in the title ("Blue", "sky") or in the address with
+// its scheme removed ("bsky.app"). The scheme is stripped from both sides so
+// "https://" never matches every service at once and a pasted full URL still
+// finds its catalog entry. Plain case-insensitive substring, nothing fuzzy.
+const stripScheme = (value) => String(value ?? '').replace(/^[a-z][a-z0-9+.-]*:\/\//i, '');
+
+export const normaliseServiceQuery = (query) =>
+  stripScheme(String(query ?? '').trim()).replace(/\/+$/, '').toLowerCase();
+
+export const serviceMatchesQuery = (service, query) => {
+  const needle = normaliseServiceQuery(query);
+  if (!needle) {
+    return true;
+  }
+  const title = String(service?.title ?? '').toLowerCase();
+  const address = stripScheme(service?.url).toLowerCase();
+  return title.includes(needle) || address.includes(needle);
+};
+
+export const filterServicesByQuery = (services, query) => {
+  const needle = normaliseServiceQuery(query);
+  if (!needle) {
+    return services;
+  }
+  return services.filter((service) => serviceMatchesQuery(service, needle));
+};
