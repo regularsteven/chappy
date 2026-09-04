@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { serviceCatalogBase, accentColors } from '../src/renderer/data/serviceCatalog.core.mjs';
+import {
+  serviceCatalogBase,
+  accentColors,
+  filterServicesByQuery,
+  serviceMatchesQuery
+} from '../src/renderer/data/serviceCatalog.core.mjs';
 
 assert(Array.isArray(accentColors), 'accentColors must be an array');
 assert(accentColors.length > 0, 'accentColors must have at least one color');
@@ -24,4 +29,21 @@ for (const tab of serviceCatalogBase) {
   assert(fs.existsSync(iconPath), `Missing icon for service "${tab.id}": ${iconPath}`);
 }
 
-console.log(`✅ Default chat services ready (${serviceCatalogBase.length} entries).`);
+// Quick Add search: title or domain, case-insensitive substring, on every keypress.
+const idsFor = (query) => filterServicesByQuery(serviceCatalogBase, query).map((service) => service.id);
+
+assert.deepEqual(idsFor('bsky.app'), ['bluesky'], 'domain query narrows to the one matching service');
+assert.deepEqual(idsFor('Blue'), ['bluesky'], 'title prefix narrows to the one matching service');
+assert(idsFor('Sky').includes('bluesky'), 'a fragment anywhere in the title still matches');
+assert(idsFor('sky').includes('bluesky'), 'matching is case-insensitive');
+assert.deepEqual(idsFor('https://bsky.app'), ['bluesky'], 'a pasted full URL still finds its catalog entry');
+assert.deepEqual(idsFor('https://bsky.app/'), ['bluesky'], 'a trailing slash on the query is ignored');
+assert.equal(filterServicesByQuery(serviceCatalogBase, ''), serviceCatalogBase, 'empty query returns the full list untouched');
+assert.equal(filterServicesByQuery(serviceCatalogBase, '   '), serviceCatalogBase, 'whitespace-only query returns the full list untouched');
+assert.equal(filterServicesByQuery(serviceCatalogBase, 'https://'), serviceCatalogBase, 'a bare scheme does not filter anything');
+assert.deepEqual(idsFor('no-such-service-xyz'), [], 'an unmatched query yields an empty grid');
+assert(!idsFor('https').includes('bluesky'), 'the scheme itself is never a match target');
+assert(serviceMatchesQuery({ title: 'Messenger', url: 'https://www.facebook.com/messages/' }, 'facebook.com'), 'domain inside a longer address matches');
+assert(!serviceMatchesQuery({ title: 'Messenger', url: 'https://www.facebook.com/messages/' }, 'bsky'), 'unrelated query does not match');
+
+console.log(`✅ Default chat services ready (${serviceCatalogBase.length} entries), Quick Add search filters by title and domain.`);
