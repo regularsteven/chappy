@@ -5,7 +5,7 @@
 - **Severity:** trivial
 - **Version bump:** patch
 - **Branches:** feature/quick-add-filters-services
-- **Merged:** TBD
+- **Merged:** 2026-09-04
 
 ## Summary
 
