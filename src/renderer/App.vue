@@ -28,9 +28,10 @@
           }"
           :style="activeTabId === tab.id ? { boxShadow: `0 0 18px ${tab.color}` } : {}"
           :title="tab.title"
+          :data-loaded="isServiceLive(tab) ? 'true' : 'false'"
           @click="selectTab(tab.id)"
         >
-          <span class="sr-only">{{ tab.title }}</span>
+          <span class="sr-only">{{ serviceTabLabel(tab) }}</span>
           <span class="relative flex h-full w-full items-center justify-center" data-ref="service-tab-icon-wrap">
             <img
               v-if="resolveIcon(tab.icon)"
@@ -58,6 +59,12 @@
               {{ tab.title.slice(0, 1) }}
             </span>
           </span>
+          <span
+            v-if="isServiceLive(tab)"
+            class="service-loaded-dot pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 rounded-full"
+            data-ref="service-tab-loaded-dot"
+            aria-hidden="true"
+          ></span>
           <span
             v-if="tabHasUnread(tab.id)"
             class="notification-badge pointer-events-none absolute -right-1 -top-1 flex items-center justify-center rounded-full border border-slate-950 bg-rose-500 text-[10px] font-semibold leading-none"
@@ -1118,9 +1125,13 @@
               :icon="resolveIcon(tab.icon)"
               :rect="tab.mirrorWindow"
               :active="activeTabId === tab.id"
+              :minimized="tab.mirrorWindow.minimized === true"
+              :maximized="tab.mirrorWindow.maximized === true"
               :min-width="MIRROR_WINDOW_MIN_WIDTH"
               :min-height="MIRROR_WINDOW_MIN_HEIGHT"
               @focus="focusMirrorTab(tab.id)"
+              @minimize="minimizeMirrorWindow(tab.id)"
+              @toggle-maximize="toggleMirrorWindowMaximized(tab.id)"
               @close="closeMirrorWindow(tab.id)"
               @update:rect="(rect) => updateMirrorWindowRect(tab.id, rect)"
             >
@@ -1166,7 +1177,7 @@
           </div>
 
           <p
-            v-if="!mirrorOpenTabs.length && !mirrorWidgets.length"
+            v-if="!mirrorVisibleTabs.length && !mirrorWidgets.length"
             class="mirror-canvas-hint pointer-events-none absolute inset-0 flex items-center justify-center text-xs uppercase tracking-[0.35em]"
           >
             Select a service or add widgets
@@ -1292,6 +1303,15 @@ import {
   describeArrangeGrid,
   resolveArrangeGrid,
 } from './composables/mirrorArrange.mjs';
+import {
+  isServiceInMemory,
+  isWindowMaximized,
+  isWindowVisible,
+  maximizedRect,
+  releaseMaximizeState,
+  serializeMirrorWindow,
+  toggleMaximizeState,
+} from './composables/mirrorWindowState.mjs';
 import ClockWidget from './components/ClockWidget.vue';
 import PackageWidget from './components/PackageWidget.vue';
 import WidgetCatalog from './components/WidgetCatalog.vue';
@@ -1661,6 +1681,18 @@ const formatUnreadCount = (count) => {
 };
 
 const isTabLoaded = (tabId) => loadedTabIds.value.includes(tabId);
+// Drives the white dot beside the sidebar icon: true while the service still
+// has a live webview, so a click re-shows it instead of reloading it.
+const isServiceLive = (tab) =>
+  isServiceInMemory({
+    mirrorMode: isMirrorMode.value,
+    mirrorWindow: tab?.mirrorWindow || null,
+    active: activeTabId.value === tab?.id,
+    preserveTabMemory: preserveTabMemory.value,
+    preloaded: isTabLoaded(tab?.id),
+  });
+// Screen readers get the same fact the dot carries.
+const serviceTabLabel = (tab) => (isServiceLive(tab) ? `${tab.title} (loaded)` : tab.title);
 const markTabLoaded = (tabId) => {
   if (tabId === 'chappy' || isTabLoaded(tabId)) {
     return;
@@ -1718,6 +1750,20 @@ const sanitizeFiniteNumber = (value, fallback) => {
   return Number.isFinite(num) ? Math.round(num) : fallback;
 };
 
+// The rect a maximised window goes back to. Only kept while `maximized` is
+// set, so a half-written config can never restore a window to nowhere.
+const hydrateMirrorRestoreRect = (input) => {
+  if (!input || typeof input !== 'object') {
+    return undefined;
+  }
+  return {
+    x: Math.max(0, sanitizeFiniteNumber(input.x, 40)),
+    y: Math.max(0, sanitizeFiniteNumber(input.y, 40)),
+    width: Math.max(MIRROR_WINDOW_MIN_WIDTH, sanitizeFiniteNumber(input.width, MIRROR_WINDOW_DEFAULT_WIDTH)),
+    height: Math.max(MIRROR_WINDOW_MIN_HEIGHT, sanitizeFiniteNumber(input.height, MIRROR_WINDOW_DEFAULT_HEIGHT)),
+  };
+};
+
 const hydrateMirrorWindow = (input) => {
   if (!input || typeof input !== 'object') {
     return undefined;
@@ -1729,6 +1775,11 @@ const hydrateMirrorWindow = (input) => {
     height: Math.max(MIRROR_WINDOW_MIN_HEIGHT, sanitizeFiniteNumber(input.height, MIRROR_WINDOW_DEFAULT_HEIGHT)),
     z: Math.max(1, sanitizeFiniteNumber(input.z, 1)),
     open: input.open === true,
+    // A minimised window resumes minimised: it was left loaded but out of the
+    // way, and the mirror should come back the way it was left.
+    minimized: input.minimized === true,
+    maximized: input.maximized === true,
+    restore: hydrateMirrorRestoreRect(input.restore),
   };
 };
 
@@ -1867,7 +1918,7 @@ const serializeTab = (tab) => ({
   lastUrl: normalizeHttpsUrl(tab.lastUrl),
   primaryIconPath: tab.primaryIconPath || undefined,
   secondaryIconPath: tab.secondaryIconPath || undefined,
-  mirrorWindow: tab.mirrorWindow ? { ...tab.mirrorWindow } : undefined,
+  mirrorWindow: serializeMirrorWindow(tab.mirrorWindow),
 });
 
 const persistConfig = async () => {
@@ -2059,6 +2110,13 @@ const mirrorOpenTabs = computed(() =>
   tabs.value.filter((tab) => tab.mirrorWindow?.open).sort((a, b) => a.id.localeCompare(b.id))
 );
 
+// Minimised windows stay mounted (and loaded) but off the canvas, so anything
+// about what the canvas looks like — the empty hint, smart arrange, the
+// cascade offset for the next window — counts only the visible ones.
+const mirrorVisibleTabs = computed(() =>
+  tabs.value.filter((tab) => isWindowVisible(tab.mirrorWindow))
+);
+
 const resolveMirrorWebviewSrc = (tab) => {
   if (!mirrorLaunchUrls.has(tab.id)) {
     mirrorLaunchUrls.set(tab.id, resolveLaunchUrl(tab));
@@ -2094,7 +2152,7 @@ const highestMirrorZ = () =>
   );
 
 const createMirrorWindowRect = () => {
-  const offset = 48 + (mirrorOpenTabs.value.length % 6) * 36;
+  const offset = 48 + (mirrorVisibleTabs.value.length % 6) * 36;
   return clampRectToCanvas(
     { x: offset, y: offset, width: MIRROR_WINDOW_DEFAULT_WIDTH, height: MIRROR_WINDOW_DEFAULT_HEIGHT },
     MIRROR_WINDOW_MIN_WIDTH,
@@ -2109,9 +2167,9 @@ const openMirrorWindowForTab = (tabId) => {
     const rect = existing
       ? clampRectToCanvas(existing, MIRROR_WINDOW_MIN_WIDTH, MIRROR_WINDOW_MIN_HEIGHT)
       : createMirrorWindowRect();
-    // Already open and on top: only re-clamp, so repeated sidebar clicks do not
-    // inflate the persisted z counter.
-    if (existing?.open && existing.z === top) {
+    // Already open, un-minimised and on top: only re-clamp, so repeated sidebar
+    // clicks do not inflate the persisted z counter.
+    if (existing?.open && !existing.minimized && existing.z === top) {
       if (
         rect.x === existing.x &&
         rect.y === existing.y &&
@@ -2122,7 +2180,9 @@ const openMirrorWindowForTab = (tabId) => {
       }
       return { ...tab, mirrorWindow: { ...existing, ...rect } };
     }
-    return { ...tab, mirrorWindow: { ...rect, z: top + 1, open: true } };
+    // Un-minimising is a pure state change: the webview was never unmounted,
+    // so the service reappears exactly as it was left, with no reload.
+    return { ...tab, mirrorWindow: { ...existing, ...rect, z: top + 1, open: true, minimized: false } };
   });
 };
 
@@ -2139,20 +2199,62 @@ const focusMirrorTab = (tabId) => {
   });
 };
 
+// Close unmounts the webview: the service leaves memory and a later open
+// reloads it. Minimise only hides the window, so the guest keeps running.
 const closeMirrorWindow = (tabId) => {
   updateTabById(tabId, (tab) =>
-    tab.mirrorWindow ? { ...tab, mirrorWindow: { ...tab.mirrorWindow, open: false } } : tab
+    tab.mirrorWindow
+      ? { ...tab, mirrorWindow: { ...tab.mirrorWindow, open: false, minimized: false } }
+      : tab
   );
 };
 
-const updateMirrorWindowRect = (tabId, rect) => {
+const minimizeMirrorWindow = (tabId) => {
+  updateTabById(tabId, (tab) =>
+    tab.mirrorWindow && !tab.mirrorWindow.minimized
+      ? { ...tab, mirrorWindow: { ...tab.mirrorWindow, minimized: true } }
+      : tab
+  );
+};
+
+// One button both ways: fill the canvas, or go back to the size and position
+// the window had before it was filled.
+const toggleMirrorWindowMaximized = (tabId) => {
+  focusMirrorTab(tabId);
+  const bounds = getMirrorCanvasBounds();
+  updateTabById(tabId, (tab) => {
+    const existing = tab.mirrorWindow;
+    if (!existing) {
+      return tab;
+    }
+    const next = toggleMaximizeState(existing, bounds);
+    const clamped = clampRectToCanvas(next, MIRROR_WINDOW_MIN_WIDTH, MIRROR_WINDOW_MIN_HEIGHT);
+    return {
+      ...tab,
+      mirrorWindow: {
+        ...existing,
+        ...clamped,
+        maximized: next.maximized,
+        restore: next.restore,
+        minimized: false,
+      },
+    };
+  });
+};
+
+// `keepMaximized` is for the re-clamp after a canvas resize, which is not the
+// user moving the window. Every other caller (drag, resize, smart arrange) is,
+// so the window stops counting as maximised and drops its restore rect.
+const updateMirrorWindowRect = (tabId, rect, { keepMaximized = false } = {}) => {
   const clamped = clampRectToCanvas(rect, MIRROR_WINDOW_MIN_WIDTH, MIRROR_WINDOW_MIN_HEIGHT);
   updateTabById(tabId, (tab) => {
     const existing = tab.mirrorWindow;
     if (!existing) {
       return tab;
     }
+    const released = keepMaximized ? null : releaseMaximizeState(existing);
     if (
+      !released &&
       existing.x === clamped.x &&
       existing.y === clamped.y &&
       existing.width === clamped.width &&
@@ -2160,24 +2262,23 @@ const updateMirrorWindowRect = (tabId, rect) => {
     ) {
       return tab;
     }
-    return { ...tab, mirrorWindow: { ...existing, ...clamped } };
+    return { ...tab, mirrorWindow: { ...existing, ...clamped, ...(released || {}) } };
   });
 };
 
-// Smart arrange: tile every open window into equal strips or a 2 x 2 grid
-// chosen from the window count and the canvas aspect (mirrorArrange.mjs).
+// Smart arrange: tile every window on the canvas into equal strips or a 2 x 2
+// grid chosen from the window count and the canvas aspect (mirrorArrange.mjs).
 // Windows are numbered in sidebar order, not the id-sorted render order, so
 // window 1 is the top service in the menu and the layout reads top to bottom.
-const mirrorArrangeTabs = computed(() => tabs.value.filter((tab) => tab.mirrorWindow?.open));
-
+// Minimised windows are not on the canvas, so they take no slot.
 const mirrorArrangeGrid = computed(() => {
   const size = mirrorCanvasSize.value;
   const bounds = size.width > 0 && size.height > 0 ? size : getMirrorCanvasBounds();
-  return resolveArrangeGrid(mirrorArrangeTabs.value.length, bounds);
+  return resolveArrangeGrid(mirrorVisibleTabs.value.length, bounds);
 });
 
 const mirrorArrangeLabel = computed(() =>
-  mirrorArrangeGrid.value ? describeArrangeGrid(mirrorArrangeGrid.value, mirrorArrangeTabs.value.length) : ''
+  mirrorArrangeGrid.value ? describeArrangeGrid(mirrorArrangeGrid.value, mirrorVisibleTabs.value.length) : ''
 );
 
 const mirrorArrangeGlyph = computed(() =>
@@ -2189,7 +2290,7 @@ const mirrorArrangeGlyph = computed(() =>
 // windows keep their minimum size and overlap rather than collapsing.
 // Only rects change; z-order, open state, and webviews are untouched.
 const arrangeMirrorWindows = () => {
-  const openTabs = mirrorArrangeTabs.value;
+  const openTabs = mirrorVisibleTabs.value;
   const rects = computeArrangedRects(openTabs.length, getMirrorCanvasBounds());
   if (!rects) {
     return;
@@ -2498,10 +2599,18 @@ const clampAllMirrorItems = () => {
   if (!mirrorCanvasRef.value) {
     return;
   }
+  const bounds = getMirrorCanvasBounds();
   tabs.value.forEach((tab) => {
-    if (tab.mirrorWindow) {
-      updateMirrorWindowRect(tab.id, tab.mirrorWindow);
+    if (!tab.mirrorWindow) {
+      return;
     }
+    // A maximised window is re-filled rather than re-clamped, so it keeps
+    // covering the canvas after the app window or the services menu changes it.
+    if (isWindowMaximized(tab.mirrorWindow)) {
+      updateMirrorWindowRect(tab.id, maximizedRect(bounds), { keepMaximized: true });
+      return;
+    }
+    updateMirrorWindowRect(tab.id, tab.mirrorWindow, { keepMaximized: true });
   });
   mirrorWidgets.value.forEach((widget) => {
     updateMirrorWidgetRect(widget.id, {
