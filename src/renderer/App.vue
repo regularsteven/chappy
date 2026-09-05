@@ -1197,6 +1197,40 @@
           </button>
 
           <button
+            v-if="mirrorArrangeGrid"
+            id="mirror-arrange-button"
+            type="button"
+            :title="mirrorArrangeLabel"
+            :data-columns="mirrorArrangeGrid.columns"
+            :data-rows="mirrorArrangeGrid.rows"
+            class="absolute bottom-4 left-4 z-10 flex h-9 w-9 items-center justify-center rounded-md border transition"
+            @click="arrangeMirrorWindows"
+          >
+            <span class="sr-only">{{ mirrorArrangeLabel }}</span>
+            <svg
+              aria-hidden="true"
+              class="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path
+                v-for="fraction in mirrorArrangeGlyph.vertical"
+                :key="`v-${fraction}`"
+                :d="`M${3 + 18 * fraction} 3v18`"
+              />
+              <path
+                v-for="fraction in mirrorArrangeGlyph.horizontal"
+                :key="`h-${fraction}`"
+                :d="`M3 ${3 + 18 * fraction}h18`"
+              />
+            </svg>
+          </button>
+
+          <button
             id="mirror-add-widget-button"
             type="button"
             title="Add widgets"
@@ -1252,6 +1286,12 @@
 <script setup>
 import SettingsModal from './components/SettingsModal.vue';
 import MirrorWindow from './components/MirrorWindow.vue';
+import {
+  arrangeGlyphDividers,
+  computeArrangedRects,
+  describeArrangeGrid,
+  resolveArrangeGrid,
+} from './composables/mirrorArrange.mjs';
 import ClockWidget from './components/ClockWidget.vue';
 import PackageWidget from './components/PackageWidget.vue';
 import WidgetCatalog from './components/WidgetCatalog.vue';
@@ -1362,6 +1402,10 @@ const suppressWindowDrop = (event) => {
   event.preventDefault();
 };
 const mirrorCanvasRef = ref(null);
+// Live canvas size for the arrange button glyph, which flips between columns
+// and rows as the app window (or the sliding services menu) changes the
+// canvas aspect. Kept by a ResizeObserver; see syncMirrorCanvasSize.
+const mirrorCanvasSize = ref({ width: 0, height: 0 });
 const mirrorWebviewRefs = new Map();
 // Launch URLs are snapshotted per webview mount: binding :src reactively would
 // re-navigate the guest every time lastUrl updates (double loads, SPA reloads).
@@ -2120,6 +2164,41 @@ const updateMirrorWindowRect = (tabId, rect) => {
   });
 };
 
+// Smart arrange: tile every open window into equal strips or a 2 x 2 grid
+// chosen from the window count and the canvas aspect (mirrorArrange.mjs).
+// Windows are numbered in sidebar order, not the id-sorted render order, so
+// window 1 is the top service in the menu and the layout reads top to bottom.
+const mirrorArrangeTabs = computed(() => tabs.value.filter((tab) => tab.mirrorWindow?.open));
+
+const mirrorArrangeGrid = computed(() => {
+  const size = mirrorCanvasSize.value;
+  const bounds = size.width > 0 && size.height > 0 ? size : getMirrorCanvasBounds();
+  return resolveArrangeGrid(mirrorArrangeTabs.value.length, bounds);
+});
+
+const mirrorArrangeLabel = computed(() =>
+  mirrorArrangeGrid.value ? describeArrangeGrid(mirrorArrangeGrid.value, mirrorArrangeTabs.value.length) : ''
+);
+
+const mirrorArrangeGlyph = computed(() =>
+  mirrorArrangeGrid.value ? arrangeGlyphDividers(mirrorArrangeGrid.value) : { vertical: [], horizontal: [] }
+);
+
+// Geometry goes through updateMirrorWindowRect so the same min-size clamp
+// applies as for a manual resize: on a canvas too narrow for N strips the
+// windows keep their minimum size and overlap rather than collapsing.
+// Only rects change; z-order, open state, and webviews are untouched.
+const arrangeMirrorWindows = () => {
+  const openTabs = mirrorArrangeTabs.value;
+  const rects = computeArrangedRects(openTabs.length, getMirrorCanvasBounds());
+  if (!rects) {
+    return;
+  }
+  openTabs.forEach((tab, index) => {
+    updateMirrorWindowRect(tab.id, rects[index]);
+  });
+};
+
 const setMirrorWebviewRef = (tabId, element) => {
   if (element) {
     mirrorWebviewRefs.set(tabId, element);
@@ -2444,11 +2523,49 @@ watch(
   { flush: 'post' }
 );
 
+// A hidden canvas (Chappy panel open) measures 0 x 0; ignore it so the last
+// real size survives a hide/show cycle and the glyph does not flicker.
+const syncMirrorCanvasSize = () => {
+  const el = mirrorCanvasRef.value;
+  if (!el || el.clientWidth <= 0 || el.clientHeight <= 0) {
+    return;
+  }
+  if (el.clientWidth === mirrorCanvasSize.value.width && el.clientHeight === mirrorCanvasSize.value.height) {
+    return;
+  }
+  mirrorCanvasSize.value = { width: el.clientWidth, height: el.clientHeight };
+};
+
+let mirrorCanvasObserver = null;
+const disconnectMirrorCanvasObserver = () => {
+  if (mirrorCanvasObserver) {
+    mirrorCanvasObserver.disconnect();
+    mirrorCanvasObserver = null;
+  }
+};
+
+watch(
+  mirrorCanvasRef,
+  (canvas) => {
+    disconnectMirrorCanvasObserver();
+    if (!canvas) {
+      return;
+    }
+    syncMirrorCanvasSize();
+    if (typeof ResizeObserver === 'function') {
+      mirrorCanvasObserver = new ResizeObserver(syncMirrorCanvasSize);
+      mirrorCanvasObserver.observe(canvas);
+    }
+  },
+  { flush: 'post' }
+);
+
 let mirrorResizeTimeout = null;
 const handleWindowResize = () => {
   if (!isMirrorMode.value) {
     return;
   }
+  syncMirrorCanvasSize();
   if (mirrorResizeTimeout) {
     clearTimeout(mirrorResizeTimeout);
   }
@@ -3233,6 +3350,7 @@ onBeforeUnmount(() => {
     clearTimeout(mirrorResizeTimeout);
     mirrorResizeTimeout = null;
   }
+  disconnectMirrorCanvasObserver();
   clearServicesMenuHideTimer();
   if (typeof chappyApi?.setBadgeCount === 'function') {
     void chappyApi.setBadgeCount(0).catch(() => {});

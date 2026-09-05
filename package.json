@@ -1,6 +1,6 @@
 {
   "name": "chappy",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Chat-first browser built with Electron, Vue, and Tailwind.",
   "main": "main/main.js",
   "scripts": {
@@ -15,7 +15,7 @@
     "build:windows": "npm run build:renderer && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win nsis portable --publish never && node scripts/print-release-paths.js",
     "build:full": "npm run build:desktop",
     "start": "npm run dev",
-    "test": "node scripts/check-tabs.mjs && node scripts/check-widgets.mjs && node scripts/check-calendar.mjs && node scripts/check-calendar-instances.mjs && node scripts/check-app-update.mjs",
+    "test": "node scripts/check-tabs.mjs && node scripts/check-widgets.mjs && node scripts/check-calendar.mjs && node scripts/check-calendar-instances.mjs && node scripts/check-app-update.mjs && node scripts/check-mirror-arrange.mjs",
     "pack:widget": "node scripts/pack-widget.mjs",
     "test:services": "node scripts/check-service-loads.mjs",
     "test:widget-runtime": "cross-env ELECTRON_RUN_AS_NODE= electron scripts/check-widget-runtime.electron.cjs",
