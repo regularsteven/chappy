@@ -103,6 +103,22 @@
   color: var(--ch-text-strong);
 }
 
+/* "Loaded and in memory" dot: the service still has a live webview (a window on
+   the mirror canvas, a minimised one, or a preserved Desktop tab), so opening
+   it costs nothing. Sits in the gutter to the right of the icon, clear of the
+   unread badge in the corner. */
+#service-sidebar .service-loaded-dot {
+  width: 0.375rem;
+  height: 0.375rem;
+  background-color: #ffffff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.55);
+}
+
+/* A white dot on a light sidebar needs an edge to be seen at all. */
+#chappy-app-shell[data-theme='light'] #service-sidebar .service-loaded-dot {
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.45);
+}
+
 #service-sidebar .chappy-tab-button {
   padding: 0.45rem;
   border-color: transparent;
