@@ -405,16 +405,19 @@
 }
 
 /* Mirror canvas chrome buttons: a solid white disc with a dark glyph so they
-   stay legible on the black mirror background. */
+   stay legible on the black mirror background. The arrange button is square
+   (a layout icon) where the other two are round. */
 #mirror-add-widget-button,
-#mirror-show-menu-button {
+#mirror-show-menu-button,
+#mirror-arrange-button {
   background-color: #ffffff;
   border-color: #ffffff;
   color: #0f172a;
 }
 
 #mirror-add-widget-button:hover,
-#mirror-show-menu-button:hover {
+#mirror-show-menu-button:hover,
+#mirror-arrange-button:hover {
   background-color: #e2e8f0;
   color: #020617;
 }
