@@ -2,15 +2,21 @@
   <section
     ref="rootRef"
     class="mirror-window absolute flex flex-col overflow-hidden rounded-xl"
-    :class="{ 'mirror-window--active': active, 'mirror-window--dragging': dragMode !== null }"
+    :class="{
+      'mirror-window--active': active,
+      'mirror-window--dragging': dragMode !== null,
+      'mirror-window--minimized': minimized
+    }"
     :style="style"
+    :inert="minimized || undefined"
+    :aria-hidden="minimized ? 'true' : undefined"
     @pointerdown="$emit('focus')"
   >
     <header
       class="mirror-window-titlebar flex h-9 shrink-0 select-none items-center gap-2 px-3"
       data-ref="mirror-window-titlebar"
       @pointerdown="startMove"
-      @dblclick="fillCanvas"
+      @dblclick="$emit('toggle-maximize')"
     >
       <img
         v-if="icon"
@@ -24,12 +30,23 @@
       <button
         type="button"
         class="mirror-window-control"
-        title="Fill canvas"
+        title="Minimise"
+        data-ref="mirror-window-minimize"
+        @pointerdown.stop
+        @click="$emit('minimize')"
+      >
+        −
+      </button>
+      <button
+        type="button"
+        class="mirror-window-control"
+        :title="maximized ? 'Restore size' : 'Fill canvas'"
+        :data-maximized="maximized ? 'true' : 'false'"
         data-ref="mirror-window-maximize"
         @pointerdown.stop
-        @click="fillCanvas"
+        @click="$emit('toggle-maximize')"
       >
-        ⛶
+        {{ maximized ? '❐' : '⛶' }}
       </button>
       <button
         type="button"
@@ -71,11 +88,13 @@ const props = defineProps({
   icon: { type: String, default: '' },
   rect: { type: Object, required: true },
   active: { type: Boolean, default: false },
+  minimized: { type: Boolean, default: false },
+  maximized: { type: Boolean, default: false },
   minWidth: { type: Number, default: 320 },
   minHeight: { type: Number, default: 240 },
 });
 
-const emit = defineEmits(['focus', 'close', 'update:rect']);
+const emit = defineEmits(['focus', 'close', 'minimize', 'toggle-maximize', 'update:rect']);
 
 const rootRef = ref(null);
 
@@ -103,20 +122,16 @@ const { liveRect, dragMode, startMove, startResize } = useMirrorDrag({
 
 const displayRect = computed(() => liveRect.value || props.rect);
 
+// Minimised windows keep their webview mounted and running — they are hidden,
+// never unmounted, so re-opening one costs nothing and the page keeps its
+// state. `display: none` is the same mechanism Desktop mode's preserved tabs
+// use, so it is known to leave the guest alive.
 const style = computed(() => ({
+  display: props.minimized ? 'none' : undefined,
   left: `${displayRect.value.x}px`,
   top: `${displayRect.value.y}px`,
   width: `${displayRect.value.width}px`,
   height: `${displayRect.value.height}px`,
   zIndex: props.rect.z || 1,
 }));
-
-const fillCanvas = () => {
-  const bounds = getCanvasBounds();
-  if (!bounds) {
-    return;
-  }
-  emit('focus');
-  emit('update:rect', { x: 0, y: 0, width: bounds.width, height: bounds.height });
-};
 </script>

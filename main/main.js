@@ -190,7 +190,9 @@ const MIRROR_COORD_MAX = 20000;
 const MIRROR_WINDOW_MIN_WIDTH = 320;
 const MIRROR_WINDOW_MIN_HEIGHT = 240;
 
-const sanitizeMirrorWindow = (value) => {
+// The rect a maximised window goes back to. Only stored while the window is
+// maximised, so a stale rect can never be restored later.
+const sanitizeMirrorRestore = (value) => {
   if (!isObject(value)) {
     return undefined;
   }
@@ -198,9 +200,28 @@ const sanitizeMirrorWindow = (value) => {
     x: clampNumber(value.x, 40, 0, MIRROR_COORD_MAX),
     y: clampNumber(value.y, 40, 0, MIRROR_COORD_MAX),
     width: clampNumber(value.width, 760, MIRROR_WINDOW_MIN_WIDTH, MIRROR_COORD_MAX),
+    height: clampNumber(value.height, 540, MIRROR_WINDOW_MIN_HEIGHT, MIRROR_COORD_MAX)
+  };
+};
+
+const sanitizeMirrorWindow = (value) => {
+  if (!isObject(value)) {
+    return undefined;
+  }
+  const open = value.open === true;
+  const maximized = value.maximized === true;
+  return {
+    x: clampNumber(value.x, 40, 0, MIRROR_COORD_MAX),
+    y: clampNumber(value.y, 40, 0, MIRROR_COORD_MAX),
+    width: clampNumber(value.width, 760, MIRROR_WINDOW_MIN_WIDTH, MIRROR_COORD_MAX),
     height: clampNumber(value.height, 540, MIRROR_WINDOW_MIN_HEIGHT, MIRROR_COORD_MAX),
     z: clampNumber(value.z, 1, 1, 1000000),
-    open: value.open === true
+    open,
+    // Minimised is a sub-state of open: the window is hidden but its webview
+    // stays loaded, so it resumes minimised rather than closed.
+    minimized: open && value.minimized === true,
+    maximized,
+    restore: maximized ? sanitizeMirrorRestore(value.restore) : undefined
   };
 };
 
