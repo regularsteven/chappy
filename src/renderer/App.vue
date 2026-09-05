@@ -1177,7 +1177,7 @@
             id="mirror-show-menu-button"
             type="button"
             title="Show services menu"
-            class="absolute left-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border opacity-40 transition hover:opacity-100"
+            class="absolute left-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border transition"
             @click="revealServicesMenu"
           >
             <span class="sr-only">Show services menu</span>
@@ -1200,7 +1200,7 @@
             id="mirror-add-widget-button"
             type="button"
             title="Add widgets"
-            class="absolute bottom-4 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border text-lg leading-none opacity-40 transition hover:opacity-100"
+            class="absolute bottom-4 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full border text-lg leading-none transition"
             @click="goToWidgetsTab"
           >
             +

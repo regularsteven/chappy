@@ -404,16 +404,19 @@
   max-width: 10rem;
 }
 
+/* Mirror canvas chrome buttons: a solid white disc with a dark glyph so they
+   stay legible on the black mirror background. */
 #mirror-add-widget-button,
 #mirror-show-menu-button {
-  background-color: rgba(0, 0, 0, 0.6);
-  border-color: #1e293b;
-  color: #475569;
+  background-color: #ffffff;
+  border-color: #ffffff;
+  color: #0f172a;
 }
 
 #mirror-add-widget-button:hover,
 #mirror-show-menu-button:hover {
-  color: #cbd5e1;
+  background-color: #e2e8f0;
+  color: #020617;
 }
 
 /* Packaged HTML widgets on the mirror canvas: near-invisible chrome that
