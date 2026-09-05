@@ -1,0 +1,13 @@
+{
+  "id": "obyvak",
+  "name": "Living Room",
+  "version": "0.1.0",
+  "description": "Control lights, curtain and blinds in the Blanická living room (Obývací pokoj) via KNX.",
+  "entry": "index.html",
+  "icon": "icon.svg",
+  "author": "Steven Wright",
+  "tags": ["home", "control"],
+  "defaultSize": { "width": 320, "height": 480 },
+  "minSize": { "width": 260, "height": 360 },
+  "multiInstance": false
+}

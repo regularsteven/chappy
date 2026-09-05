@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Living Room</title>
+<style>
+  :root {
+    --amber:   #FFB340;
+    --amber-d: #a85e00;
+    --blue:    #7dd3fc;
+    --green:   #4ade80;
+    --red:     #f87171;
+    --text:    #f1f5f9;
+    --soft:    #94a3b8;
+    --muted:   #475569;
+    --line:    rgba(148,163,184,0.18);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html {
+    /* Scales everything with widget size — no fixed px layout */
+    font-size: clamp(9px, 3.6vmin, 18px);
+    height: 100%;
+  }
+  body {
+    background: #000;
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    height: 100%;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    display: flex;
+    flex-direction: column;
+    padding: 0.9rem 1rem 0.7rem;
+    gap: 0.55rem;
+  }
+
+  /* ── header ── */
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  .title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--soft);
+  }
+  .conn {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: var(--muted);
+    transition: background 0.5s;
+    flex-shrink: 0;
+    align-self: center;
+  }
+  .conn.ok  { background: var(--green); }
+  .conn.err { background: var(--red); }
+
+  /* ── section heading ── */
+  .sh {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 0.25rem;
+  }
+
+  /* ── light rows ── */
+  .lights { display: flex; flex-direction: column; gap: 0.3rem; }
+  .light-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .light-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--soft);
+    flex: 0 0 4.8rem;
+  }
+  /* dim bar: tap left half = toggle, drag anywhere = dim */
+  .dim-wrap {
+    flex: 1;
+    height: 1.6rem;
+    border-radius: 0.4rem;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--line);
+    position: relative;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .dim-fill {
+    position: absolute;
+    inset: 0;
+    width: 0%;
+    background: linear-gradient(90deg, var(--amber-d), var(--amber));
+    border-radius: 0.4rem;
+    transition: width 0.2s;
+    pointer-events: none;
+  }
+  .dim-pct {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 0.45rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    pointer-events: none;
+    letter-spacing: 0.04em;
+  }
+  .dim-pct.dark { color: var(--soft); }
+
+  /* ── divider ── */
+  hr { border: none; border-top: 1px solid var(--line); }
+
+  /* ── curtain / blinds ── */
+  .shade-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+  .shade-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.55rem;
+  }
+  .shade-label {
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--blue);
+  }
+  .shade-pos {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    /* Reuse as a thin progress bar below it */
+  }
+  .shade-bar-wrap {
+    height: 0.3rem;
+    background: rgba(255,255,255,0.06);
+    border-radius: 0.2rem;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .shade-bar-fill {
+    height: 100%;
+    background: var(--blue);
+    border-radius: 0.2rem;
+    width: 0%;
+    transition: width 0.3s;
+    pointer-events: none;
+  }
+  .shade-btns {
+    display: flex;
+    gap: 0.25rem;
+  }
+  .shade-btn {
+    flex: 1;
+    background: rgba(125,211,252,0.07);
+    border: 1px solid rgba(125,211,252,0.2);
+    border-radius: 0.35rem;
+    color: var(--blue);
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0.25rem 0;
+    line-height: 1;
+    transition: background 0.12s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .shade-btn:active { background: rgba(125,211,252,0.2); }
+
+  /* Curtain gets full width */
+  .curtain-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.55rem;
+  }
+  .curtain-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* ── central off ── */
+  .central-off {
+    width: 100%;
+    background: rgba(248,113,113,0.07);
+    border: 1px solid rgba(248,113,113,0.25);
+    border-radius: 0.5rem;
+    color: var(--red);
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 0.45rem 0;
+    transition: background 0.12s;
+    margin-top: auto;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .central-off:active { background: rgba(248,113,113,0.18); }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="title">Living Room</span>
+  <div class="conn" id="conn"></div>
+</header>
+
+<!-- Lights -->
+<div>
+  <p class="sh">Lights</p>
+  <div class="lights">
+    <div class="light-row">
+      <span class="light-name">Chandelier</span>
+      <div class="dim-wrap" id="bar-lustr" data-ch="lustr">
+        <div class="dim-fill" id="fill-lustr"></div>
+        <span class="dim-pct dark" id="pct-lustr">0%</span>
+      </div>
+    </div>
+    <div class="light-row">
+      <span class="light-name">Exterior</span>
+      <div class="dim-wrap" id="bar-vnejsi" data-ch="vnejsi">
+        <div class="dim-fill" id="fill-vnejsi"></div>
+        <span class="dim-pct dark" id="pct-vnejsi">0%</span>
+      </div>
+    </div>
+    <div class="light-row">
+      <span class="light-name">Interior</span>
+      <div class="dim-wrap" id="bar-vnitrni" data-ch="vnitrni">
+        <div class="dim-fill" id="fill-vnitrni"></div>
+        <span class="dim-pct dark" id="pct-vnitrni">0%</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr />
+
+<!-- Curtain -->
+<div>
+  <p class="sh">Curtain</p>
+  <div class="curtain-row">
+    <div class="curtain-top">
+      <span class="shade-label">Závěs</span>
+      <span class="shade-pos" id="pos-curtain">0%</span>
+    </div>
+    <div class="shade-bar-wrap" id="bw-curtain" data-shade="curtain">
+      <div class="shade-bar-fill" id="bf-curtain"></div>
+    </div>
+    <div class="shade-btns">
+      <button class="shade-btn" onclick="setCurtain(0)">Open</button>
+      <button class="shade-btn" onclick="stopShade('curtain')">Stop</button>
+      <button class="shade-btn" onclick="setCurtain(100)">Close</button>
+    </div>
+  </div>
+</div>
+
+<hr />
+
+<!-- Blinds -->
+<div>
+  <p class="sh">Blinds</p>
+  <div class="shade-grid">
+    <div class="shade-card">
+      <span class="shade-label">Left</span>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="shade-bar-wrap" style="flex:1;margin-right:0.4rem" id="bw-left" data-shade="left">
+          <div class="shade-bar-fill" id="bf-left"></div>
+        </div>
+        <span class="shade-pos" id="pos-left">100%</span>
+      </div>
+      <div class="shade-btns">
+        <button class="shade-btn" onclick="setBlind('left',0)">↑</button>
+        <button class="shade-btn" onclick="stopShade('left')">■</button>
+        <button class="shade-btn" onclick="setBlind('left',100)">↓</button>
+      </div>
+    </div>
+    <div class="shade-card">
+      <span class="shade-label">Right</span>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div class="shade-bar-wrap" style="flex:1;margin-right:0.4rem" id="bw-right" data-shade="right">
+          <div class="shade-bar-fill" id="bf-right"></div>
+        </div>
+        <span class="shade-pos" id="pos-right">100%</span>
+      </div>
+      <div class="shade-btns">
+        <button class="shade-btn" onclick="setBlind('right',0)">↑</button>
+        <button class="shade-btn" onclick="stopShade('right')">■</button>
+        <button class="shade-btn" onclick="setBlind('right',100)">↓</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button class="central-off" onclick="centralOff()">Central Off</button>
+
+<script>
+(function () {
+'use strict';
+
+var HOST = '192.168.88.4';
+var HTTP  = 'http://' + HOST + '/apps/localbus.lp';
+var WS_URL = 'ws://' + HOST + '/apps/localbus.lp';
+
+// KNX IDs and datatypes
+var IDs = {
+  swLustr:    { id: 14,    dt: 1001 },
+  dimLustr:   { id: 270,   dt: 5001 },
+  swVnejsi:   { id: 15,    dt: 1001 },
+  dimVnejsi:  { id: 268,   dt: 5001 },
+  swVnitrni:  { id: 16,    dt: 1001 },
+  dimVnitrni: { id: 269,   dt: 5001 },
+  curtainCmd: { id: 15107, dt: 5001 },
+  curtainFb:  { id: 14598, dt: 5001 },
+  curtainMov: { id: 14342, dt: 1001 },
+  leftCmd:    { id: 15109, dt: 5001 },
+  leftFb:     { id: 14602, dt: 5001 },
+  leftStop:   { id: 14347, dt: 1001 },
+  rightCmd:   { id: 15108, dt: 5001 },
+  rightFb:    { id: 14600, dt: 5001 },
+  rightStop:  { id: 14345, dt: 1001 },
+  centralCmd: { id: 65817, dt: 1001 },
+};
+
+// Reverse map id → key
+var idMap = {};
+Object.keys(IDs).forEach(function (k) { idMap[IDs[k].id] = k; });
+
+var connEl = document.getElementById('conn');
+var ws = null;
+var wsOk = false;
+var reconnectTimer = null;
+
+function setConn(state) { // 'ok' | 'err' | ''
+  wsOk = state === 'ok';
+  connEl.className = 'conn' + (state ? ' ' + state : '');
+}
+
+function wsSend(obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+function wsWrite(key, value) {
+  var o = IDs[key];
+  if (o) wsSend({ action: 'write', address: o.id, datatype: o.dt, value: value });
+}
+
+function connect() {
+  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch (e) { scheduleReconnect(); return; }
+  ws.onopen = function () { setConn('ok'); loadState(); };
+  ws.onclose = function () { setConn('err'); scheduleReconnect(); };
+  ws.onerror = function () { setConn('err'); };
+  ws.onmessage = function (e) {
+    try {
+      var msg = JSON.parse(e.data);
+      if (Array.isArray(msg.objects)) applyState(msg.objects);
+      else if (msg.address !== undefined) applyOne(msg.address, msg.value);
+    } catch (_) {}
+  };
+}
+
+function scheduleReconnect() {
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(connect, 2000);
+}
+
+function loadState() {
+  fetch(HTTP, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) { if (d.objects) applyState(d.objects); })
+    .catch(function () {});
+}
+
+function applyState(objects) {
+  objects.forEach(function (o) { applyOne(o.id, o.value); });
+}
+
+function applyOne(id, value) {
+  var key = idMap[id];
+  if (!key) return;
+  switch (key) {
+    case 'dimLustr':   setDim('lustr', value);   break;
+    case 'swLustr':    if (!value) setDim('lustr', 0); break;
+    case 'dimVnejsi':  setDim('vnejsi', value);  break;
+    case 'swVnejsi':   if (!value) setDim('vnejsi', 0); break;
+    case 'dimVnitrni': setDim('vnitrni', value); break;
+    case 'swVnitrni':  if (!value) setDim('vnitrni', 0); break;
+    case 'curtainFb':  setShade('curtain', value); break;
+    case 'leftFb':     setShade('left', value);    break;
+    case 'rightFb':    setShade('right', value);   break;
+  }
+}
+
+// ── Light dim bar ──
+var dimState = { lustr: 0, vnejsi: 0, vnitrni: 0 };
+var dimTimers = {};
+
+function setDim(ch, pct) {
+  var v = Math.max(0, Math.min(100, Math.round(Number(pct))));
+  dimState[ch] = v;
+  var fill = document.getElementById('fill-' + ch);
+  var label = document.getElementById('pct-' + ch);
+  if (fill)  fill.style.width = v + '%';
+  if (label) {
+    label.textContent = v > 0 ? v + '%' : 'Off';
+    label.className = 'dim-pct' + (v > 40 ? '' : ' dark');
+  }
+}
+
+function dimBarInteract(e, ch) {
+  var bar = e.currentTarget;
+  var rect = bar.getBoundingClientRect();
+  var pct = Math.max(0, Math.min(100, Math.round(((e.clientX - rect.left) / rect.width) * 100)));
+  setDim(ch, pct);
+  clearTimeout(dimTimers[ch]);
+  dimTimers[ch] = setTimeout(function () {
+    // If clicking the left 25% and current is ON, treat as toggle off
+    var dimKey = 'dim' + ch.charAt(0).toUpperCase() + ch.slice(1);
+    wsWrite(dimKey, pct);
+    if (pct === 0) {
+      var swKey = 'sw' + ch.charAt(0).toUpperCase() + ch.slice(1);
+      wsWrite(swKey, false);
+    }
+  }, 60);
+}
+
+// Attach pointer events to each light bar
+['lustr', 'vnejsi', 'vnitrni'].forEach(function (ch) {
+  var bar = document.getElementById('bar-' + ch);
+  if (!bar) return;
+  bar.addEventListener('click', function (e) { dimBarInteract(e, ch); });
+  // Drag support
+  var dragging = false;
+  bar.addEventListener('mousedown', function (e) {
+    dragging = true;
+    dimBarInteract(e, ch);
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (dragging) dimBarInteract({ currentTarget: bar, clientX: e.clientX }, ch);
+  });
+  document.addEventListener('mouseup', function () { dragging = false; });
+  // Touch
+  bar.addEventListener('touchstart', function (e) {
+    dimBarInteract({ currentTarget: bar, clientX: e.touches[0].clientX }, ch);
+  }, { passive: true });
+  bar.addEventListener('touchmove', function (e) {
+    dimBarInteract({ currentTarget: bar, clientX: e.touches[0].clientX }, ch);
+  }, { passive: true });
+});
+
+// ── Shades ──
+function setShade(name, pct) {
+  var v = Math.max(0, Math.min(100, Math.round(Number(pct))));
+  var pos = document.getElementById('pos-' + name);
+  var fill = document.getElementById('bf-' + name);
+  if (pos)  pos.textContent = v + '%';
+  if (fill) fill.style.width = v + '%';
+}
+
+function shadeBarInteract(e, name, cmdKey) {
+  var bar = e.currentTarget;
+  var rect = bar.getBoundingClientRect();
+  var pct = Math.max(0, Math.min(100, Math.round(((e.clientX - rect.left) / rect.width) * 100)));
+  setShade(name, pct);
+  wsWrite(cmdKey, pct);
+}
+
+// Attach shade bars
+[
+  ['curtain', 'curtainCmd'],
+  ['left',    'leftCmd'],
+  ['right',   'rightCmd'],
+].forEach(function (pair) {
+  var name = pair[0], cmdKey = pair[1];
+  var bar = document.getElementById('bw-' + name);
+  if (!bar) return;
+  bar.addEventListener('click', function (e) { shadeBarInteract(e, name, cmdKey); });
+  var dragging = false;
+  bar.addEventListener('mousedown', function (e) {
+    dragging = true;
+    shadeBarInteract(e, name, cmdKey);
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (dragging) shadeBarInteract({ currentTarget: bar, clientX: e.clientX }, name, cmdKey);
+  });
+  document.addEventListener('mouseup', function () { dragging = false; });
+  bar.addEventListener('touchstart', function (e) {
+    shadeBarInteract({ currentTarget: bar, clientX: e.touches[0].clientX }, name, cmdKey);
+  }, { passive: true });
+  bar.addEventListener('touchmove', function (e) {
+    shadeBarInteract({ currentTarget: bar, clientX: e.touches[0].clientX }, name, cmdKey);
+  }, { passive: true });
+});
+
+// ── Public actions ──
+window.setCurtain = function (pct) {
+  setShade('curtain', pct);
+  wsWrite('curtainCmd', pct);
+};
+
+window.stopShade = function (name) {
+  var key = name === 'curtain' ? 'curtainMov' : (name + 'Stop');
+  wsWrite(key, name === 'curtain' ? false : true);
+};
+
+window.setBlind = function (side, pct) {
+  setShade(side, pct);
+  wsWrite(side + 'Cmd', pct);
+};
+
+window.centralOff = function () {
+  if (!confirm('Turn off all lights in the living room?')) return;
+  wsWrite('centralCmd', true);
+};
+
+// Boot
+connect();
+// Fallback poll when WS is down
+setInterval(function () { if (!wsOk) loadState(); }, 15000);
+
+})();
+</script>
+</body>
+</html>
