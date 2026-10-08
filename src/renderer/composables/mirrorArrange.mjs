@@ -7,15 +7,21 @@
 //              canvas, rows on a tall one
 //   4          2 x 2 grid on a wide canvas, four rows on a tall one
 // A square canvas follows the wide rules.
+//
+// The canvas aspect only picks the first layout. Passing an orientation
+// overrides it, so the button can flip between the wide and tall layouts on
+// every press (docs/features/032-mirror-arrange-toggle.md).
 
 export const resolveArrangeOrientation = (bounds) =>
   bounds.height > bounds.width ? 'tall' : 'wide';
 
-export const resolveArrangeGrid = (count, bounds) => {
+export const flipArrangeOrientation = (orientation) =>
+  orientation === 'tall' ? 'wide' : 'tall';
+
+export const resolveArrangeGrid = (count, bounds, orientation = resolveArrangeOrientation(bounds)) => {
   if (!Number.isInteger(count) || count < 2) {
     return null;
   }
-  const orientation = resolveArrangeOrientation(bounds);
   if (orientation === 'wide') {
     return count === 4
       ? { columns: 2, rows: 2, orientation }
@@ -29,8 +35,8 @@ export const resolveArrangeGrid = (count, bounds) => {
 // between windows and no overhang past the far edge.
 const slotEdge = (index, slots, total) => Math.round((index * total) / slots);
 
-export const computeArrangedRects = (count, bounds) => {
-  const grid = resolveArrangeGrid(count, bounds);
+export const computeArrangedRects = (count, bounds, orientation) => {
+  const grid = resolveArrangeGrid(count, bounds, orientation);
   if (!grid) {
     return null;
   }
