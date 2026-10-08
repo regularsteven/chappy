@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  flipArrangeOrientation,
   resolveArrangeOrientation,
   resolveArrangeGrid,
   computeArrangedRects,
@@ -101,4 +102,36 @@ assert.deepEqual(arrangeGlyphDividers(resolveArrangeGrid(4, WIDE)), { vertical: 
 assert.deepEqual(arrangeGlyphDividers(resolveArrangeGrid(3, WIDE)).vertical.length, 2, '3 columns: two dividers');
 assert.deepEqual(arrangeGlyphDividers(resolveArrangeGrid(5, TALL)).horizontal.length, 4, '5 rows: four dividers');
 
-console.log('✅ Mirror smart arrange tiles 2–9 windows into seamless columns, rows, or a 2 × 2 grid by canvas aspect.');
+// Toggle: an explicit orientation overrides the canvas aspect, so the button
+// can flip between the wide and tall layouts on any canvas.
+assert.equal(flipArrangeOrientation('wide'), 'tall');
+assert.equal(flipArrangeOrientation('tall'), 'wide');
+const forced = (count, bounds, orientation) => {
+  const result = resolveArrangeGrid(count, bounds, orientation);
+  return [result.columns, result.rows, result.orientation];
+};
+assert.deepEqual(forced(2, WIDE, 'tall'), [1, 2, 'tall'], '2 windows on a wide canvas flipped: 2 rows');
+assert.deepEqual(forced(2, TALL, 'wide'), [2, 1, 'wide'], '2 windows on a tall canvas flipped: 2 columns');
+assert.deepEqual(forced(3, WIDE, 'tall'), [1, 3, 'tall'], '3 windows on a wide canvas flipped: 3 rows');
+assert.deepEqual(forced(4, WIDE, 'tall'), [1, 4, 'tall'], '4 windows on a wide canvas flipped: 4 rows');
+assert.deepEqual(forced(4, TALL, 'wide'), [2, 2, 'wide'], '4 windows on a tall canvas flipped: 2 x 2 grid');
+assert.deepEqual(forced(5, SQUARE, 'tall'), [1, 5, 'tall'], 'a square canvas can be flipped to rows');
+assert.deepEqual(resolveArrangeGrid(3, WIDE, 'wide'), resolveArrangeGrid(3, WIDE), 'forcing the auto orientation changes nothing');
+assert.equal(resolveArrangeGrid(1, WIDE, 'tall'), null, 'one window still has nothing to arrange when flipped');
+assert.deepEqual(computeArrangedRects(2, WIDE, 'tall'), [
+  { x: 0, y: 0, width: 1920, height: 540 },
+  { x: 0, y: 540, width: 1920, height: 540 },
+], '2 windows on a wide canvas flipped: top and bottom halves');
+assert.deepEqual(computeArrangedRects(2, WIDE, undefined), computeArrangedRects(2, WIDE), 'no orientation falls back to the canvas aspect');
+for (const bounds of [WIDE, TALL, SQUARE, { width: 1366, height: 768 }, { width: 1001, height: 1003 }]) {
+  for (let count = 2; count <= 9; count += 1) {
+    const flipped = flipArrangeOrientation(resolveArrangeOrientation(bounds));
+    assert.deepEqual(
+      computeArrangedRects(count, bounds, flipped).length,
+      count,
+      `flipped layout has a slot per window for ${count} windows in ${JSON.stringify(bounds)}`
+    );
+  }
+}
+
+console.log('✅ Mirror smart arrange tiles 2–9 windows into seamless columns, rows, or a 2 × 2 grid by canvas aspect, and flips between them.');
