@@ -1301,7 +1301,9 @@ import {
   arrangeGlyphDividers,
   computeArrangedRects,
   describeArrangeGrid,
+  flipArrangeOrientation,
   resolveArrangeGrid,
+  resolveArrangeOrientation,
 } from './composables/mirrorArrange.mjs';
 import {
   isServiceInMemory,
@@ -2271,10 +2273,28 @@ const updateMirrorWindowRect = (tabId, rect, { keepMaximized = false } = {}) => 
 // Windows are numbered in sidebar order, not the id-sorted render order, so
 // window 1 is the top service in the menu and the layout reads top to bottom.
 // Minimised windows are not on the canvas, so they take no slot.
+//
+// The first press applies the layout the canvas aspect suggests; every press
+// after that flips between the wide and tall layouts, and the icon always
+// previews the one the next press will apply. Opening, closing, or minimising
+// a window changes what there is to arrange, so the toggle starts over from
+// the canvas aspect.
+const mirrorArrangeLastOrientation = ref(null);
+
+watch(
+  () => mirrorVisibleTabs.value.map((tab) => tab.id).join('|'),
+  () => {
+    mirrorArrangeLastOrientation.value = null;
+  }
+);
+
 const mirrorArrangeGrid = computed(() => {
   const size = mirrorCanvasSize.value;
   const bounds = size.width > 0 && size.height > 0 ? size : getMirrorCanvasBounds();
-  return resolveArrangeGrid(mirrorVisibleTabs.value.length, bounds);
+  const orientation = mirrorArrangeLastOrientation.value
+    ? flipArrangeOrientation(mirrorArrangeLastOrientation.value)
+    : resolveArrangeOrientation(bounds);
+  return resolveArrangeGrid(mirrorVisibleTabs.value.length, bounds, orientation);
 });
 
 const mirrorArrangeLabel = computed(() =>
@@ -2290,14 +2310,16 @@ const mirrorArrangeGlyph = computed(() =>
 // windows keep their minimum size and overlap rather than collapsing.
 // Only rects change; z-order, open state, and webviews are untouched.
 const arrangeMirrorWindows = () => {
+  const grid = mirrorArrangeGrid.value;
   const openTabs = mirrorVisibleTabs.value;
-  const rects = computeArrangedRects(openTabs.length, getMirrorCanvasBounds());
+  const rects = grid && computeArrangedRects(openTabs.length, getMirrorCanvasBounds(), grid.orientation);
   if (!rects) {
     return;
   }
   openTabs.forEach((tab, index) => {
     updateMirrorWindowRect(tab.id, rects[index]);
   });
+  mirrorArrangeLastOrientation.value = grid.orientation;
 };
 
 const setMirrorWebviewRef = (tabId, element) => {
